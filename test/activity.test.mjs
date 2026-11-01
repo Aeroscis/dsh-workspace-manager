@@ -1,15 +1,16 @@
-import fs from 'node:fs'
+/**
+ * Activity semantics: a workspace is "active" only because a human prompt
+ * landed in one of its Sessions. Opening a Session, a blank placeholder and a
+ * subagent child must never raise a workspace; a fork counts once prompted in.
+ */
 import assert from 'node:assert/strict'
-import vm from 'node:vm'
+import { loadHelpers } from './client-helpers.mjs'
 
-const source = fs.readFileSync('client.js', 'utf8')
-const start = source.indexOf('    function sessionActivity')
-const end = source.indexOf('// ----------------------------------------------------------------- icons', start)
-assert.ok(start > 0 && end > start, 'helper block not found')
-const block = source.slice(start, end)
-const sandbox = {}
-vm.runInNewContext(`${block}\nthis.sessionActivity = sessionActivity; this.activityOf = activityOf; this.activeWorkspaceId = activeWorkspaceId`, sandbox)
-const { sessionActivity, activityOf, activeWorkspaceId } = sandbox
+const { sessionActivity, activityOf, activeWorkspaceId } = loadHelpers(
+  '    function sessionActivity',
+  '// ----------------------------------------------------------------- icons',
+  ['sessionActivity', 'activityOf', 'activeWorkspaceId'],
+)
 
 const byId = {
   a1: { id: 'a1', updatedAt: 100, blank: false },

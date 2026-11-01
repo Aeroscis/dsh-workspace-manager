@@ -1,18 +1,16 @@
-import fs from 'node:fs'
+/**
+ * Drag geometry: the pure functions that turn measured row heights plus a
+ * pointer delta into a drop index and a set of "make room" offsets.
+ */
 import assert from 'node:assert/strict'
-import vm from 'node:vm'
+import { loadHelpers } from './client-helpers.mjs'
 
-const source = fs.readFileSync('client.js', 'utf8')
-const start = source.indexOf('    function restTops')
-const end = source.indexOf('    // ----------------------------------------------------------------- icons', start)
-assert.ok(start > 0 && end > start, 'drag helper block not found')
-const block = source.slice(start, end)
-const sandbox = {}
-vm.runInNewContext(
-  `${block}\nthis.restTops=restTops; this.moveInOrder=moveInOrder; this.dropIndexFor=dropIndexFor; this.previewOffsets=previewOffsets`,
-  sandbox,
+const { restTops, moveInOrder, dropIndexFor, previewOffsets } = loadHelpers(
+  '    function restTops',
+  '// ----------------------------------------------------------------- icons',
+  ['restTops', 'moveInOrder', 'dropIndexFor', 'previewOffsets'],
 )
-const { restTops, moveInOrder, dropIndexFor, previewOffsets } = sandbox
+
 const eq = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected))
 
 eq(restTops([30, 30, 30], 0), [0, 30, 60])
