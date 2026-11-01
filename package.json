@@ -1,0 +1,47 @@
+{
+  "name": "@aeroscis/dsh-workspace-manager",
+  "version": "0.2.1",
+  "description": "Workspace order and cleanup manager for DeepSeek Harness: auto-rise the active workspace, pin, one-click sort, remove empty workspaces. 工作区管理：活动项目自动上浮、置顶、一键整理、清理空工作区。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "workspace",
+    "workspace-manager",
+    "sidebar"
+  ],
+  "license": "MIT",
+  "author": "Aeroscis",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

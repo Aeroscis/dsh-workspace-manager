@@ -1,0 +1,4 @@
+# Bundle patch: one Host row (empty apply) so the package's dsh.client half loads.
+- insert:
+    - id: workspace-manager
+      name: '@aeroscis/dsh-workspace-manager'

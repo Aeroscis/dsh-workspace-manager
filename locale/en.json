@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Workspace Manager",
+    "description": "Orders and cleans the workspace list: the workspace you last sent a message to rises above the first idle one, pinned workspaces stay on top, one-click sort, remove empty workspaces."
+  }
+}
