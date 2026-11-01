@@ -195,10 +195,10 @@ window.__ModuleLoader__.load({
       return offsets
     }
 
-    // Activity means "a human prompt landed in this Session". The Session list
-    // derives `updatedAt` from the persisted `lastPromptAt`; opening a Session
-    // only moves `retainedBy.mainView`, so it never counts. Blank placeholders
-    // and subagent children are not user activity either; a fork is a normal
+    // Activity means a human prompt landed in this Session. The Session list
+    // derives updatedAt from the persisted lastPromptAt; opening a Session only
+    // moves retainedBy.mainView, so it never counts. Blank placeholders and
+    // subagent children are not user activity either; a fork is a normal
     // Session and counts once you prompt in it.
     function sessionActivity(session) {
       if (!session || session.blank === true) return 0

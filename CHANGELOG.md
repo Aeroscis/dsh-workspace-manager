@@ -1,6 +1,6 @@
 # 更新日志
 
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/) 规范。
 
 发布渠道：npm [`@aeroscis/dsh-workspace-manager`](https://www.npmjs.com/package/@aeroscis/dsh-workspace-manager) · 源码 <https://github.com/Aeroscis/dsh-workspace-manager>
 
