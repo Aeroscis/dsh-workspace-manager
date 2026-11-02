@@ -1,10 +1,10 @@
 # 工作区管理 内部设计
 
-面向维护者。功能、安装、用法在 [README](../README.md)，这里只写 client.js 的结构、规则和改动时需要注意的地方。
+面向维护者。功能、安装、用法在 [README](../README.md)，这里只写结构、规则和改动时需要注意的地方。
 
 ## 运行位置与加载方式
 
-包分两半。宿主半边 `index.js` 的 `apply()` 是空函数，作用只是让 Loader 拥有这个包的生命周期；浏览器半边 `client.js` 是一个自包含的 bundle，用 `window.__ModuleLoader__.load` 注册，React 由宿主传入。`package.json` 的 `dsh.bundle.patch` 负责插入 Loader 行，`dsh.client` 负责把 bundle 投送给 Web GUI，两处都指向同一个包名。
+包分两半。宿主半边 `index.js` 挂 HTTP 路由（当前只服务路径迁移），功能本体在 `lib/`；浏览器半边 `client.js` 是一个自包含的 bundle，用 `window.__ModuleLoader__.load` 注册，React 由宿主传入。`package.json` 的 `dsh.bundle.patch` 负责插入 Loader 行，`dsh.client` 负责把 bundle 投送给 Web GUI，两处都指向同一个包名。
 
 ## 面板入口
 
@@ -37,6 +37,24 @@ DSH 0.2.1-rc.3 的侧栏标题栏没有给插件留扩展位：它的动作容�
 
 用指针事件，不用 HTML5 draggable。按下时量一遍各行矩形，`restTops()` 算出各行的静止位置，`dropIndexFor()` 把指针位移换算成落点索引，`previewOffsets()` 算出其余行要让出的位移；松手后先按目标顺序重排 DOM，再用两帧把拖动行的补偿位移归零。指针进入列表上下边缘 26 像素内时每帧滚动 10 像素。
 
+## 路径迁移
+
+DSH 官方注册表没有 setPath/move（记录以 realpath 相等为唯一性），所以「把工作区指到另一个目录」只能是编排：搬目录（可选）→ 删旧记录 → 新路径建记录 → 安顿会话 → 归档 + 保排序位。编排移植自 `@aeroscis/dsh-temptask` 的 `promote.ts`——马山那份是「临时任务 → 正式工作区」，绑定任务账本；这里去掉任务模型，操作任意正式工作区，且多一条「目录已死、会话早已在新路径」的直接挂回路径。三条路线里明确排除中间那条：`table().update(id)` 直改登记 path 绕过实体快照，重启前其他工作区写入会用旧快照把迁移覆盖回去（temptask DESIGN 与 Liqiuheaven 的 dsh-workspace-manager README 各自记录过同款坑）。
+
+**settler（lib/relocate.js `settleSessions()`）对每条旧会话的判定顺序**：
+
+1. `sessionQuery.observeSession()` 读 header.cwd，realpath 已等于新路径 → **直接 `attachSession`**：id 不变、日志零复制，服务「用户手动搬过目录再重绑」的场景；
+2. 否则若有已完成回合（`buildSeed()` 的 `completedPrefixBoundary`）→ 用事件前缀种子 `agents.create` 复刻一条新 cwd 的会话再挂回；
+3. 都不行 → 跳过，稍后归档。
+
+一条都没安顿成时开一条空会话占住节点——否则刚迁完的工作区立刻变成「空工作区」，会被面板自己的清理按钮认领。旧会话中除「直接挂回」外的全部归档（删旧记录后它们会掉「未分组」）。
+
+**失败语义的次序很关键**：搬目录是唯一破坏性动作且最早发生（失败则什么都没变）；建记录失败会回滚搬移（目录搬回去）；复刻是尽力而为，缺口随结果返回。Windows 下 `rename` 的 EBUSY/EPERM 指向「目录被活进程锁住」，如实翻译成 dirBusy 提示而不是笼统的 fs 错误。
+
+**client 对话框（RelocateDialog）**：行内展开替换该行；probe 结果驱动形态——登记目录存在时「把文件夹一起搬过去」默认勾选、可关；目录不存在时开关置灰、对话框降级为纯重绑。「把对话带过去」开关默认随 probe 的 sessionCount。执行走 `POST /dsh-workspace-manager/api/relocate`（confirm 门在宿主侧再拦一层）；成功后把 pinned 偏好里的旧 id 换成新 id（记录换了 id，置顶偏好要跟着工作区走），结果卡按 `orderKept`/`moved` 分行显示。
+
+**宿主路由信任模型**沿用同源检查（loopback / connection.trustedHosts + 同源 Origin + 拒绝 sec-fetch-site: cross-site），两个接口永远返回 JSON。
+
 ## 样式
 
 CSS 写在 `#wsm-styles` 这一个 style 元素里。每次加载都覆盖它的 `textContent`，而不是发现元素已存在就跳过，否则热替换后页面留着旧样式。
@@ -46,6 +64,10 @@ CSS 写在 `#wsm-styles` 这一个 style 元素里。每次加载都覆盖它的
 浏览器半边不能被 Node 直接 import：它走 `__ModuleLoader__` 注册，并且依赖宿主提供的 `react`。三个测试改为从 `client.js` 里按边界注释切出纯函数块，放进空的 VM 上下文执行，切块由 `test/client-helpers.mjs` 的 `loadHelpers()` 完成。
 
 因此边界注释是测试契约：移动或改名 `sessionActivity`、`restTops`、`moveInOrder`、`dropIndexFor`、`previewOffsets`，或者改动 `// ---- icons` 这条分隔注释，测试会直接失败，而不会静默地测一份拷贝。
+
+## 置顶标记（官方侧栏行）
+
+官方 Rows 只给会话行渲染 `PinnedIndicator`，工作区行上没有置顶视觉。项目行带着稳定锚点 `data-row-key="workspace:<workspaceId>"`（Ungrouped 桶没有 id，天然不受影响），所以浏览器半边把一枚小图钉 span 直接挂进官方行——插在 `rowActions` 之前，不挡 ⋮ 菜单。React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂等的 `syncPinnedBadges`（每个 pass 只做「差集合」写入，无变化即无 DOM 事件，不会跟 React 打架）。选择器用属性前缀匹配而不碰官方 CSS Modules 的 hash 类名，生产构建下依然成立。
 
 ## 发布形态自检
 

@@ -1,7 +1,7 @@
 {
   "name": "@aeroscis/dsh-workspace-manager",
-  "version": "0.3.0",
-  "description": "Workspace order and cleanup manager for DeepSeek Harness: auto-rise the active workspace, pin, one-click sort, remove empty workspaces. 工作区管理：活动项目自动上浮、置顶、一键整理、清理空工作区。",
+  "version": "0.4.0",
+  "description": "Workspace order, cleanup and path relocation for DeepSeek Harness: auto-rise the active workspace, pin, one-click sort, remove empty workspaces, relocate a workspace's folder with its conversations carried over. 工作区管理：活动项目自动上浮、置顶、一键整理、清理空工作区、工作区路径迁移（可连文件夹与对话一起搬）。",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -15,6 +15,7 @@
   "files": [
     "index.js",
     "client.js",
+    "lib/*.js",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
@@ -48,7 +49,7 @@
     "dsh": "^0.2.1-rc.3"
   },
   "scripts": {
-    "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs",
+    "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs && node test/relocate.test.mjs",
     "check": "node scripts/check-release.mjs && npm test && npm pack --dry-run"
   },
   "dsh": {

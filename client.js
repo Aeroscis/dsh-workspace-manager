@@ -10,6 +10,12 @@
  *   ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId)   (Host-persisted order)
  *   ctx.workspaces.delete(workspaceId)                            (removes the registration only)
  *
+ * Path relocation works through the Host half (index.js + lib/): moving the
+ * folder, re-registering the workspace entry and carrying conversations over
+ * need Node (fs, session seeds, the official workspace registry). The row
+ * action opens an inline dialog; the probe result decides whether "move the
+ * folder too" is offered or the dialog degrades to a plain rebind.
+ *
  * Every row carries a drag handle on its left edge; dragging it resolves a
  * drop index from the row rectangles and then writes the whole desired order
  * through insertBefore. The pin toggle lives on the right edge.
@@ -57,6 +63,31 @@ window.__ModuleLoader__.load({
         sessions: '{n} 个会话',
         running: '{n} 运行中',
         none: '没有工作区',
+        repath: '修改路径',
+        repathTitle: '修改「{name}」的路径',
+        repathDeadTitle: '重新绑定「{name}」（原目录已不存在）',
+        repathFrom: '当前路径：',
+        repathToLabel: '新路径（完整绝对路径）',
+        repathToPlaceholder: '例如 D:\\projects\\new-name',
+        repathMove: '把文件夹一起搬过去',
+        repathMoveDeadNote: '原目录已不存在：这次只改登记，把工作区绑定到新位置的文件夹。',
+        repathNoMoveNote: '只改登记路径：目录原地不动。',
+        repathCarry: '把对话带过去',
+        repathCarryNone: '该工作区没有会话，无需迁移对话。',
+        repathRunningWarn: '其中 {n} 个会话正在运行；迁移前会先中止它们的当前回合。',
+        repathExecute: '执行迁移',
+        repathProbeFailed: '读取 当前路径 失败：{message}',
+        repathResultTitle: '迁移完成',
+        repathMovedRename: '文件夹：已搬移',
+        repathMovedCopy: '文件夹：已跨盘复制（旧目录可能残留，见日志）',
+        repathNotMoved: '仅登记路径已更新，文件夹未搬动',
+        repathAttached: '会话：{n} 条已在目标目录，直接挂回新节点（id 不变）',
+        repathCarried: '会话：{n} 条已复刻历史并迁到新路径',
+        repathPlainCreated: '已在新路径开一条空会话',
+        repathArchived: '旧会话：{n} 条已归档',
+        repathOrderKept: '排序位：已保持',
+        repathOrderLost: '排序位：未能保持，可在面板手动整理',
+        repathResultOk: '知道了',
       },
       en: {
         title: 'Workspace Manager',
@@ -82,6 +113,31 @@ window.__ModuleLoader__.load({
         sessions: '{n} sessions',
         running: '{n} running',
         none: 'No workspaces',
+        repath: 'Change path',
+        repathTitle: 'Change path of “{name}”',
+        repathDeadTitle: 'Rebind “{name}” (directory is gone)',
+        repathFrom: 'Current path: ',
+        repathToLabel: 'New path (full absolute path)',
+        repathToPlaceholder: 'e.g. D:\\projects\\new-name',
+        repathMove: 'Move the folder too',
+        repathMoveDeadNote: 'The registered directory no longer exists: only the registration changes, now bound to the folder at the new path.',
+        repathNoMoveNote: 'Registration only: the folder stays where it is.',
+        repathCarry: 'Carry the conversations over',
+        repathCarryNone: 'This workspace has no sessions; nothing to carry.',
+        repathRunningWarn: '{n} of its sessions are running; their current turn is cancelled before the move.',
+        repathExecute: 'Migrate',
+        repathProbeFailed: 'Failed to read current path: {message}',
+        repathResultTitle: 'Migration finished',
+        repathMovedRename: 'Folder: moved',
+        repathMovedCopy: 'Folder: copied across volumes (the old copy may remain; see logs)',
+        repathNotMoved: 'Only the registered path changed; the folder did not move',
+        repathAttached: 'Sessions: {n} already at the target, re-attached as-is (same ids)',
+        repathCarried: 'Sessions: {n} replanted with their history at the new path',
+        repathPlainCreated: 'A fresh empty session opened at the new path',
+        repathArchived: 'Old sessions: {n} archived',
+        repathOrderKept: 'Sidebar position: kept',
+        repathOrderLost: 'Sidebar position: not kept; tidy it up manually',
+        repathResultOk: 'OK',
       },
     }
 
@@ -120,6 +176,31 @@ window.__ModuleLoader__.load({
       const subscribe = React.useCallback((cb) => store.subscribe(cb), [store])
       const getSnapshot = React.useCallback(() => store.getSnapshot(), [store])
       return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+    }
+
+    // ------------------------------------------------------- relocate API
+    // The dialog always works through the Host half: the browser has no fs
+    // access and no workspace registry, so both calls go to lib/routes.js.
+    async function apiProbe(workspaceId) {
+      const response = await fetch(
+        `/dsh-workspace-manager/api/probe?workspaceId=${encodeURIComponent(workspaceId)}`,
+      )
+      const body = await response.json().catch(() => undefined)
+      if (!body || body.ok !== true) {
+        throw new Error(body?.message ?? `probe HTTP ${response.status}`)
+      }
+      return body
+    }
+
+    async function apiRelocate(payload) {
+      const response = await fetch('/dsh-workspace-manager/api/relocate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const body = await response.json().catch(() => undefined)
+      if (!body) throw new Error(`relocate HTTP ${response.status}`)
+      return body
     }
 
     // ---------------------------------------------------------- preferences
@@ -304,6 +385,29 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // Path change: a folder whose arrow points out of it (relocate/rebind).
+    function iconRepath() {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 16 16',
+          width: 13,
+          height: 13,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.3,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        h('path', {
+          d:
+            'M7.6 12.6H2.9c-.5 0-.9-.4-.9-.9v-7c0-.5.4-.9.9-.9h2.5l1.2 1.5h3.6c.5 0 .9.4.9.9v.8' +
+            'M10 9.4l4.4-3.2M14.4 6.2h-2.6M14.4 6.2v2.6',
+        }),
+      )
+    }
+
     // ------------------------------------------------------------------ css
     const CSS = `
 .wsm-launcher{position:fixed;z-index:5;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;pointer-events:auto}
@@ -329,6 +433,17 @@ window.__ModuleLoader__.load({
 .wsm-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .wsm-btn:disabled{opacity:.45;cursor:default}
 .wsm-btn-danger{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
+.wsm-repath{margin:0 6px 8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
+.wsm-repath-current{font-size:11px;color:var(--dsw-alias-label-secondary);word-break:break-all}
+.wsm-repath-label{display:block;font-size:11.5px;font-weight:600;margin:10px 0 4px}
+.wsm-repath-input{width:100%;height:26px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px}
+.wsm-repath-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}
+.wsm-repath .wsm-switch-row{height:24px}
+.wsm-repath .wsm-switch-row:disabled{opacity:.45;cursor:default;background:transparent}
+.wsm-repath-toggle{margin-top:2px}
+.wsm-repath-note{font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px}
+.wsm-repath-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
+.wsm-sidebar-pin{width:16px;height:20px;color:var(--dsw-alias-state-warn-primary);flex:none;display:inline-flex;align-items:center;justify-content:center;margin-left:2px}
 .wsm-list{flex:1;min-height:0;overflow:auto;padding:4px 6px}
 .wsm-empty{padding:18px 8px;text-align:center;font-size:12px;color:var(--dsw-alias-label-secondary)}
 .wsm-row{position:relative;display:flex;align-items:center;gap:4px;padding:3px 4px 3px 2px;border-radius:6px}
@@ -359,7 +474,7 @@ window.__ModuleLoader__.load({
 .wsm-clean{margin:0 6px 8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .wsm-foot{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l1)}
 .wsm-note{font-size:11px;color:var(--dsw-alias-label-secondary)}
-.wsm-error{font-size:11px;color:var(--dsw-alias-state-error-primary)}
+.wsm-error{font-size:11px;color:var(--dsw-alias-state-error-primary);white-space:pre-line}
 `
 
     // --------------------------------------------------------- header anchor
@@ -618,6 +733,70 @@ window.__ModuleLoader__.load({
           }
         }, 'workspace-manager: reconcile')
 
+        // ---------------------------------------------------- pin markers
+        // Official sidebar rows mark pinned *sessions* only; pinned workspaces
+        // would be invisible outside the panel. Workspace rows carry a stable
+        // hook — `data-row-key="workspace:<id>"` on the project row (Ungrouped
+        // has no id and affects no one) — so a tiny badge span is inserted into
+        // the real official row, ahead of its action buttons. React may rebuild
+        // rows at any time: the MutationObserver re-syncs idempotently (badge
+        // state is a pure function of prefs ∩ current rows), so a pass that
+        // changes nothing also stops the event loop.
+        const PIN_BADGE_ATTR = 'data-wsm-pin-badge'
+        function syncPinnedBadges() {
+          const pinned = prefs.get().pinned
+          if (!Array.isArray(pinned) || pinned.length === 0) {
+            document.querySelectorAll(`[${PIN_BADGE_ATTR}]`).forEach((badge) => badge.remove())
+            return
+          }
+          const pinnedSet = new Set(pinned)
+          const rows = document.querySelectorAll('[data-row-key^="workspace:"]')
+          for (const row of rows) {
+            const id = row.getAttribute('data-row-key').slice('workspace:'.length)
+            const wanted = pinnedSet.has(id)
+            const existing = row.querySelector(`[${PIN_BADGE_ATTR}]`)
+            if (wanted && !existing) {
+              const badge = document.createElement('span')
+              badge.setAttribute(PIN_BADGE_ATTR, '')
+              badge.className = 'wsm-sidebar-pin'
+              badge.innerHTML =
+                '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h6v7l1 1 1-1v-7h6v-2c-1.66 0-3-1.34-3-3z"/></svg>'
+              const actions = row.querySelector('[class*="rowActions"]')
+              if (actions && actions.parentElement === row) row.insertBefore(badge, actions)
+              else row.appendChild(badge)
+            } else if (!wanted && existing) {
+              existing.remove()
+            }
+          }
+        }
+
+        ctx.effect(() => {
+          let timer
+          const schedule = (delay) => {
+            if (timer !== undefined) return
+            timer = setTimeout(() => {
+              timer = undefined
+              try {
+                syncPinnedBadges()
+              } catch {
+                /* the official DOM can be mid-flight; the next pass recovers */
+              }
+            }, delay)
+          }
+          const observer = new MutationObserver(() => schedule(120))
+          observer.observe(document.body, { childList: true, subtree: true })
+          const offPrefs = prefs.subscribe(() => schedule(0))
+          const offWorkspaces = ctx.workspaces.list.subscribe(() => schedule(0))
+          schedule(0)
+          return () => {
+            observer.disconnect()
+            if (timer !== undefined) clearTimeout(timer)
+            document.querySelectorAll(`[${PIN_BADGE_ATTR}]`).forEach((badge) => badge.remove())
+            offPrefs()
+            offWorkspaces()
+          }
+        }, 'workspace-manager: pin badges')
+
         ctx.effect(() => ctx.locale.register(NS, DICT), 'workspace-manager: locale')
 
         const t = () => ctx.locale.bind(NS)
@@ -627,6 +806,151 @@ window.__ModuleLoader__.load({
           const [, setTick] = React.useState(0)
           React.useEffect(() => ctx.locale.subscribe(() => setTick((n) => n + 1)), [])
           return t()
+        }
+
+        // Inline dialog replacing the workspace row. One box covers both
+        // scenarios: with the registered directory present the "move folder"
+        // toggle defaults on; if the directory is gone the toggle is disabled
+        // and the dialog degrades to binding the workspace to another folder.
+        function RelocateDialog({ workspace, runningCount, busy, onExecute, onCancel }) {
+          const tr = useTranslate()
+          const title = workspace.title || workspace.path
+          const [probeData, setProbeData] = React.useState(undefined)
+          // 开箱即改：预填当前路径，改名/换父目录都只动要变的那一段。
+          const [path, setPath] = React.useState(workspace.path)
+          const [moveOn, setMoveOn] = React.useState(true)
+          const [carryOn, setCarryOn] = React.useState(true)
+
+          React.useEffect(() => {
+            let alive = true
+            ;(async () => {
+              try {
+                const data = await apiProbe(workspace.workspaceId)
+                if (alive) setProbeData({ ...data })
+              } catch (error) {
+                if (alive) setProbeData({ ok: false, message: error instanceof Error ? error.message : String(error) })
+              }
+            })()
+            return () => {
+              alive = false
+            }
+          }, [workspace.workspaceId])
+
+          const probeOk = probeData?.ok === true
+          const dead = probeOk && probeData.dirExists === false
+          const moving = probeOk && !dead && moveOn === true
+          const sessionCount = probeOk ? probeData.sessionCount ?? 0 : 0
+
+          // Defaults land once the probe answers: move on (dir exists),
+          // carry on (there is something to carry). The prefilled path snaps
+          // to the probe's realpath only when the user hasn't edited it yet.
+          React.useEffect(() => {
+            if (!probeOk) return
+            setMoveOn(probeData.dirExists === true)
+            setCarryOn((probeData.sessionCount ?? 0) > 0)
+            if (typeof probeData.path === 'string' && probeData.path.length > 0) {
+              setPath((current) => (current === workspace.path ? probeData.path : current))
+            }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+          }, [probeOk, probeData?.dirExists, probeData?.sessionCount, probeData?.path])
+
+          const canExecute = probeOk && path.trim().length > 0
+          const execute = () => {
+            if (!canExecute) return
+            onExecute({
+              targetPath: path.trim(),
+              moveDir: moving,
+              carry: carryOn,
+            })
+          }
+
+          const toggle = (label, checked, disabled, onToggle, note) =>
+            h(
+              'div',
+              { className: 'wsm-repath-toggle' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  role: 'switch',
+                  className: 'wsm-switch-row',
+                  'aria-checked': checked ? 'true' : 'false',
+                  disabled,
+                  onClick: onToggle,
+                },
+                h('span', { className: 'wsm-switch', 'data-on': checked ? 'true' : undefined }, h('span', { className: 'wsm-switch-thumb' })),
+                h('span', { className: 'wsm-switch-label' }, label),
+              ),
+              note ? h('div', { className: 'wsm-repath-note' }, note) : null,
+            )
+
+          return h(
+            'div',
+            { key: workspace.workspaceId, className: 'wsm-repath' },
+            h('div', { className: 'wsm-confirm-title' }, tr(dead ? 'repathDeadTitle' : 'repathTitle', { name: title })),
+            h('div', { className: 'wsm-repath-current' }, `${tr('repathFrom')}${probeOk ? probeData.path : workspace.path}`),
+            h('label', { className: 'wsm-repath-label' }, tr('repathToLabel')),
+            h('input', {
+              type: 'text',
+              className: 'wsm-repath-input',
+              placeholder: tr('repathToPlaceholder'),
+              value: path,
+              autoFocus: true,
+              spellCheck: false,
+              onChange: (event) => setPath(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter' && canExecute && !busy) {
+                  event.preventDefault()
+                  execute()
+                }
+              },
+            }),
+            !probeOk
+              ? h(
+                  'div',
+                  { className: 'wsm-repath-note' },
+                  probeData === undefined
+                    ? '…'
+                    : tr('repathProbeFailed', { message: probeData.message ?? '' }),
+                )
+              : null,
+            toggle(
+              tr('repathMove'),
+              probeOk ? moving : moveOn,
+              dead,
+              () => setMoveOn((value) => !value),
+              dead ? tr('repathMoveDeadNote') : moving ? null : tr('repathNoMoveNote'),
+            ),
+            runningCount > 0
+              ? h('div', { className: 'wsm-confirm-warn' }, tr('repathRunningWarn', { n: runningCount }))
+              : null,
+            toggle(
+              tr('repathCarry'),
+              probeOk ? carryOn && sessionCount > 0 : carryOn,
+              !probeOk || sessionCount === 0,
+              () => setCarryOn((value) => !value),
+              sessionCount === 0 ? tr('repathCarryNone') : null,
+            ),
+            h(
+              'div',
+              { className: 'wsm-repath-actions' },
+              h(
+                'button',
+                { type: 'button', className: 'wsm-btn', disabled: busy, onClick: onCancel },
+                tr('cancel'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'wsm-btn wsm-btn-danger',
+                  disabled: busy || !canExecute,
+                  onClick: execute,
+                },
+                tr('repathExecute'),
+              ),
+            ),
+          )
         }
 
         function togglePin(workspaceId) {
@@ -649,6 +973,8 @@ window.__ModuleLoader__.load({
           const [drag, setDrag] = React.useState(null)
           const [settle, setSettle] = React.useState(null)
           const [localOrder, setLocalOrder] = React.useState(null)
+          const [reloc, setReloc] = React.useState(null)
+          const [relocResult, setRelocResult] = React.useState(null)
           const dragRef = React.useRef(null)
           const pointerY = React.useRef(0)
           const settleTimer = React.useRef(undefined)
@@ -668,6 +994,8 @@ window.__ModuleLoader__.load({
             update()
             window.addEventListener('resize', update)
             const onKey = (event) => {
+              // Typing a path: Escape belongs to the dialog (Exit removes focus from input).
+              if (event.key === 'Escape' && event.target instanceof HTMLInputElement) return
               if (event.key === 'Escape' && dragRef.current === null) panel.set({ open: false })
             }
             window.addEventListener('keydown', onKey)
@@ -715,12 +1043,44 @@ window.__ModuleLoader__.load({
 
           const remove = (workspaceId) => run(() => ctx.workspaces.delete(workspaceId))
 
+          // Relocate: open the inline dialog; the probe result drives whether
+          // "move the folder too" is offered (the folder still exists) or the
+          // dialog degrades to a plain rebind (registered directory is gone).
+          const openRelocate = (workspaceId) => {
+            setRelocResult(null)
+            setReloc({ id: workspaceId })
+          }
+
+          const executeRelocate = (workspaceId, payload) =>
+            run(async () => {
+              const result = await apiRelocate({
+                workspaceId,
+                ...payload,
+                confirm: true,
+              })
+              if (!result.ok) {
+                const reason = new Error(result.hint ? `${result.message}\n${result.hint}` : result.message)
+                throw reason
+              }
+              setReloc(null)
+              // The workspace id changed with the record; keep the pin state
+              // attached to the workspace, not to a stale id.
+              const current = prefs.get()
+              if (current.pinned.includes(workspaceId) && typeof result.newWorkspaceId === 'string') {
+                prefs.set({
+                  ...current,
+                  pinned: current.pinned.map((id) => (id === workspaceId ? result.newWorkspaceId : id)),
+                })
+              }
+              setRelocResult(result)
+            })
+
           // Drag-to-reorder from the left grip (pointer events, ported from
           // dsh-rundeck): the dragged row follows the pointer, the other rows
           // translate with a transition to open the target slot, and the drop
           // index is resolved from the measured row heights every frame.
           const beginDrag = (event, index) => {
-            if (busy || confirm || dragRef.current) return
+            if (busy || confirm || reloc || dragRef.current) return
             if (event.pointerType === 'mouse' && event.button !== 0) return
             const list = listRef.current
             if (!list) return
@@ -938,6 +1298,17 @@ window.__ModuleLoader__.load({
             const pinned = state.pinned.includes(workspace.workspaceId)
             const title = workspace.title || workspace.path
 
+            if (reloc?.id === workspace.workspaceId) {
+              return h(RelocateDialog, {
+                key: workspace.workspaceId,
+                workspace,
+                runningCount,
+                busy,
+                onExecute: (payload) => executeRelocate(workspace.workspaceId, payload),
+                onCancel: () => setReloc(null),
+              })
+            }
+
             if (confirm?.kind === 'delete' && confirm.id === workspace.workspaceId) {
               return h(
                 'div',
@@ -1044,6 +1415,18 @@ window.__ModuleLoader__.load({
                   'button',
                   {
                     type: 'button',
+                    className: 'wsm-icon wsm-repath-icon wsm-reveal',
+                    title: tr('repath'),
+                    'aria-label': tr('repath'),
+                    disabled: busy,
+                    onClick: () => openRelocate(workspace.workspaceId),
+                  },
+                  iconRepath(),
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
                     className: 'wsm-icon wsm-danger wsm-reveal',
                     title: tr('remove'),
                     'aria-label': tr('remove'),
@@ -1134,6 +1517,53 @@ window.__ModuleLoader__.load({
                         onClick: () => cleanEmpty(),
                       },
                       tr('remove'),
+                    ),
+                  ),
+                )
+              : null,
+            relocResult
+              ? h(
+                  'div',
+                  { className: 'wsm-clean' },
+                  h('div', { className: 'wsm-confirm-title' }, tr('repathResultTitle')),
+                  h('div', { className: 'wsm-repath-current' }, `${relocResult.from} → ${relocResult.to}`),
+                  h(
+                    'div',
+                    { className: 'wsm-repath-note' },
+                    relocResult.moved === 'rename'
+                      ? tr('repathMovedRename')
+                      : relocResult.moved === 'copy'
+                        ? tr('repathMovedCopy')
+                        : tr('repathNotMoved'),
+                  ),
+                  relocResult.attached.length > 0
+                    ? h('div', { className: 'wsm-repath-note' }, tr('repathAttached', { n: relocResult.attached.length }))
+                    : null,
+                  relocResult.carried.length > 0
+                    ? h('div', { className: 'wsm-repath-note' }, tr('repathCarried', { n: relocResult.carried.length }))
+                    : null,
+                  relocResult.createdPlainSessionId
+                    ? h('div', { className: 'wsm-repath-note' }, tr('repathPlainCreated'))
+                    : null,
+                  relocResult.archived > 0
+                    ? h('div', { className: 'wsm-repath-note' }, tr('repathArchived', { n: relocResult.archived }))
+                    : null,
+                  h(
+                    'div',
+                    { className: 'wsm-repath-note' },
+                    relocResult.orderKept ? tr('repathOrderKept') : tr('repathOrderLost'),
+                  ),
+                  h(
+                    'div',
+                    { className: 'wsm-confirm-actions' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'wsm-btn',
+                        onClick: () => setRelocResult(null),
+                      },
+                      tr('repathResultOk'),
                     ),
                   ),
                 )
