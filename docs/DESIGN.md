@@ -84,3 +84,13 @@ React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂�
 ## 发布形态自检
 
 `scripts/check-release.mjs` 校验打包看不出来的部分：包名与版本格式、`publishConfig`、必备元数据、`engines`、许可证文件、更新日志里是否有当前版本、`files` 与 `exports` 指向的路径是否存在、bundle 是否按包名注册、双语词典能否解析。`npm run check` 会在它之后跑测试与 `npm pack --dry-run`。
+
+## 自动送审
+
+`.github/workflows/publish.yml` 在推 `vX.Y.Z` 标签时跑「自检 → `npm stage publish`」，用 OIDC 换短时 token，仓库里不放 `NPM_TOKEN`。
+
+启用前必须先在 npmjs.com 的包设置里加一条 Trusted Publisher（GitHub Actions）：组织/用户名 `Aeroscis`、仓库 `dsh-workspace-manager`、workflow 文件名 `publish.yml`、environment 留空——**workflow 里没有 `environment:`**，两处不一致时认证会失败。要加 environment 就同时改 job。
+
+几个约束：npm CLI 需 ≥ 11.15（workflow 里低于此版本会自动 `npm install -g npm@11`）；`id-token: write` 不能省，否则拿不到 OIDC token；标签与 `package.json` 版本不一致时 workflow 直接失败。
+
+`npm stage publish` 只把包送进 stage 队列，维护者用 2FA 批准后才对外可见——这是 npm 现在的默认设计，不是配置没生效。批准入口在 npmjs.com 的包页面，或本地 `npm stage approve`。
