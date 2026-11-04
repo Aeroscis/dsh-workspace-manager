@@ -16,6 +16,10 @@ jobs:
           node-version: 22
 
       # 这个插件没有依赖（运行时是浏览器 bundle，由宿主加载），所以不用装包。
-      # check = 发布形态自检 + 三个逻辑测试 + npm pack --dry-run，全部离线：
-      # 不访问 registry、不跑构建脚本，任何网络环境下都稳。
-      - run: npm run check
+      # 全部离线：不访问 registry、不跑构建脚本。
+      # 拆成两步：只看 exit code 的分不出是逻辑测试炸了还是打包/元数据炸了。
+      - name: 逻辑测试
+        run: npm test
+
+      - name: 发布形态自检与打包
+        run: node scripts/check-release.mjs && npm pack --dry-run
