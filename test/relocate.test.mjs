@@ -43,18 +43,26 @@ if (process.platform === 'win32') {
 assert.equal(validateName(''), '目录名不能为空')
 assert.equal(validateName('..'), '目录名不能是 . 或 ..')
 
-// ------------------------------------------------------- pathsEqual / inside
-assert.equal(pathsEqual('D:\\a\\b', 'D:\\a\\b'), true)
-assert.equal(isInsideRoot('D:\\root', 'D:\\root\\inner'), true)
-assert.equal(isInsideRoot('D:\\root', 'D:\\root2'), false)
-assert.equal(isInsideRoot('D:\\root', 'D:\\root'), false)
-
 // ------------------------------------------------------------------ occupied
 const base = await mkdtemp(join(tmpdir(), 'wsm-relocate-'))
 try {
   const source = join(base, 'proj')
   await mkdir(source, { recursive: true })
   await writeFile(join(source, 'hello.txt'), 'hi', 'utf8')
+
+  // ----------------------------------------------------- pathsEqual / inside
+  // 用真实临时路径断言，平台无关：这段以前拿写死的 `D:\...` 直接断言，
+  // 在 Linux 上 `isInsideRoot` 恒为 false，CI 从 0.4.0 起就一直红。
+  assert.equal(pathsEqual(base, base), true)
+  assert.equal(isInsideRoot(base, join(base, 'inner')), true)
+  assert.equal(isInsideRoot(base, join(base, 'inner', 'deeper')), true)
+  assert.equal(isInsideRoot(base, `${base}-sibling`), false)
+  assert.equal(isInsideRoot(base, base), false)
+  if (process.platform === 'win32') {
+    // Windows 额外语义：大小写不敏感。
+    assert.equal(pathsEqual('D:\\a\\b', 'd:\\A\\B'), true)
+    assert.equal(isInsideRoot('D:\\root', 'D:\\root\\inner'), true)
+  }
 
   assert.equal(occupied(source), true)
   assert.equal(occupied(join(base, 'missing')), false)
