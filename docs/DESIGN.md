@@ -12,6 +12,10 @@ DSH 0.2.1-rc.3 的侧栏标题栏没有给插件留扩展位：它的动作容�
 
 这些类名由 CSS Modules 生成，属于 DSH 未公开的结构。DSH 改版后 `measureAnchor()` 量不到锚点，按钮就不出现——这是已知限制，不是本插件的缺陷。改动这块时先在目标 DSH 版本上确认类名仍然存在。
 
+面板挂在按钮上，不贴侧栏列：点按钮时把它的矩形存进 `panel.anchor`，`measure(anchorRect)` 据此给出 `left = 按钮左边缘 - 6`、`top = 按钮下边缘 + 8`，再夹进视口。面板宽度仍按侧栏列宽计算，所以它会盖住一段对话区——这是有意的，和 dsh-temptask 的弹层一致；不要改回「对齐侧栏左边缘」。
+
+面板打开期间按钮保持可见、显示激活态，并把 `z-index` 抬到遮罩之上（遮罩 900、卡片 901、按钮 902），这样再点一次就是收起。按钮一旦隐藏，弹层看着就没有来源了，也会失去这个关闭入口。
+
 ## 顺序写入
 
 只用客户端 API：`ctx.workspaces.insertBefore(id, beforeId)` 写顺序，`ctx.workspaces.delete(id)` 移除注册项。没有「只改本页」的路径，`insertBefore` 会写 Host 保存的 `workspaceIds`，所有窗口同步。
@@ -67,7 +71,15 @@ CSS 写在 `#wsm-styles` 这一个 style 元素里。每次加载都覆盖它的
 
 ## 置顶标记（官方侧栏行）
 
-官方 Rows 只给会话行渲染 `PinnedIndicator`，工作区行上没有置顶视觉。项目行带着稳定锚点 `data-row-key="workspace:<workspaceId>"`（Ungrouped 桶没有 id，天然不受影响），所以浏览器半边把一枚小图钉 span 直接挂进官方行——插在 `rowActions` 之前，不挡 ⋮ 菜单。React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂等的 `syncPinnedBadges`（每个 pass 只做「差集合」写入，无变化即无 DOM 事件，不会跟 React 打架）。选择器用属性前缀匹配而不碰官方 CSS Modules 的 hash 类名，生产构建下依然成立。
+官方 Rows 只给会话行渲染 `PinnedIndicator`，工作区行上没有置顶视觉。项目行带着稳定锚点 `data-row-key="workspace:<workspaceId>"`（Ungrouped 桶没有 id，天然不受影响），所以浏览器半边把一枚小图钉按钮直接挂进官方行——插在 `rowActions` 之前，悬停时随官方两个按钮一起左让、肩并肩排列，不遮挡 ⋮ 菜单与新建会话按钮。
+
+这枚图钉是真按钮，不是装饰：点它直接**取消置顶**，不必打开管理面板。官方项目行是带 `onClick`（展开/折叠）的 `div`，还可能带 `draggable`，所以按钮上对 `pointerdown` / `mousedown` / `click` 都做 `stopPropagation`，按图钉既不会展开工作区，也不会从图钉上开始拖动整行。取消置顶走的是同一个 `togglePin`，prefs 变化会同时驱动侧栏徽标移除和排序引擎回落。
+
+React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂等的 `syncPinnedBadges`（每个 pass 只做「差集合」写入，无变化即无 DOM 事件，不会跟 React 打架）。选择器用属性前缀匹配而不碰官方 CSS Modules 的 hash 类名，生产构建下依然成立。
+
+## 面板筛选框
+
+面板顶部是筛选输入框，按行上显示的标题做大小写不敏感的子串匹配（标题为空时退回路径——那正是该行显示的内容）。**不匹配完整路径**：同一父目录下的工作区共享整段前缀，任何片段都会把它们全部命中，等于没有筛选。筛选生效期间禁用拖拽排序：落点顺序是按可见子集算出来的，写回 Host 会只重排一部分行、把隐藏行的相对位置弄乱；清空筛选后恢复。
 
 ## 发布形态自检
 

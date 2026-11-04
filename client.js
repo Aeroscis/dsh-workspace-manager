@@ -58,11 +58,12 @@ window.__ModuleLoader__.load({
         cleanEmptyCount: '清理空工作区（{n}）',
         cleanTitle: '将移除 {n} 个空工作区',
         cleanBody: '这些工作区没有会话，移除只影响工作区列表。',
-        note: '顺序修改会写入 Host，所有窗口同步。',
         failed: '操作失败：{message}',
         sessions: '{n} 个会话',
         running: '{n} 运行中',
         none: '没有工作区',
+        noMatch: '没有匹配的工作区',
+        filterPlaceholder: '筛选：按名称',
         repath: '修改路径',
         repathTitle: '修改「{name}」的路径',
         repathDeadTitle: '重新绑定「{name}」（原目录已不存在）',
@@ -108,11 +109,12 @@ window.__ModuleLoader__.load({
         cleanEmptyCount: 'Clean empty workspaces ({n})',
         cleanTitle: 'Remove {n} empty workspaces',
         cleanBody: 'They have no sessions; only the workspace list changes.',
-        note: 'Order changes are written to the Host and shared by every window.',
         failed: 'Operation failed: {message}',
         sessions: '{n} sessions',
         running: '{n} running',
         none: 'No workspaces',
+        noMatch: 'No matching workspaces',
+        filterPlaceholder: 'Filter by name',
         repath: 'Change path',
         repathTitle: 'Change path of “{name}”',
         repathDeadTitle: 'Rebind “{name}” (directory is gone)',
@@ -420,6 +422,10 @@ window.__ModuleLoader__.load({
 .wsm-title{flex:1;font-size:13px;font-weight:600}
 .wsm-close{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .wsm-close:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.wsm-filterbar{flex:none;padding:9px 12px 0}
+.wsm-filter{width:100%;height:26px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-size:12px}
+.wsm-filter::placeholder{color:var(--dsw-alias-label-secondary)}
+.wsm-filter:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}
 .wsm-toolbar{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .wsm-switch-row{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 4px;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary);font-size:12px;cursor:pointer;flex:none}
 .wsm-switch-row:hover{background:var(--dsw-alias-bg-layer-2)}
@@ -443,7 +449,9 @@ window.__ModuleLoader__.load({
 .wsm-repath-toggle{margin-top:2px}
 .wsm-repath-note{font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:2px}
 .wsm-repath-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}
-.wsm-sidebar-pin{width:16px;height:20px;color:var(--dsw-alias-state-warn-primary);flex:none;display:inline-flex;align-items:center;justify-content:center;margin-left:2px}
+.wsm-sidebar-pin{width:16px;height:20px;flex:none;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-state-warn-primary);cursor:pointer}
+.wsm-sidebar-pin:hover{background:var(--dsw-alias-border-l1)}
+.wsm-sidebar-pin:active{background:var(--dsw-alias-border-l2)}
 .wsm-list{flex:1;min-height:0;overflow:auto;padding:4px 6px}
 .wsm-empty{padding:18px 8px;text-align:center;font-size:12px;color:var(--dsw-alias-label-secondary)}
 .wsm-row{position:relative;display:flex;align-items:center;gap:4px;padding:3px 4px 3px 2px;border-radius:6px}
@@ -473,7 +481,6 @@ window.__ModuleLoader__.load({
 .wsm-confirm-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
 .wsm-clean{margin:0 6px 8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .wsm-foot{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l1)}
-.wsm-note{font-size:11px;color:var(--dsw-alias-label-secondary)}
 .wsm-error{font-size:11px;color:var(--dsw-alias-state-error-primary);white-space:pre-line}
 `
 
@@ -535,16 +542,19 @@ window.__ModuleLoader__.load({
     }
 
     // ---------------------------------------------------------------- engine
-    function measure() {
+    // The panel hangs off the button that opened it: its left edge sits at the
+    // button's left edge and it drops below it, instead of snapping to the
+    // sidebar column. Width still follows the column so the card keeps the
+    // list's proportions; it is clamped into the viewport on the right.
+    function measure(anchorRect) {
       const header = document.querySelector('[class*="sectionHeader"]')
-      const actions = document.querySelector('[class*="headerActions"]')
-      const root = header?.parentElement
-      const rootRect = root?.getBoundingClientRect()
-      const actionRect = actions?.getBoundingClientRect()
+      const rootRect = header?.parentElement?.getBoundingClientRect()
       const headerRect = header?.getBoundingClientRect()
       const width = Math.max(272, Math.min(420, (rootRect?.width ?? 300) - 12))
-      const left = (rootRect?.left ?? 64) + 6
-      const top = (actionRect?.bottom ?? headerRect?.bottom ?? 56) + 6
+      const anchored = anchorRect && Number.isFinite(anchorRect.left)
+      const rawLeft = anchored ? anchorRect.left - 6 : (rootRect?.left ?? 64) + 6
+      const left = Math.max(8, Math.min(rawLeft, window.innerWidth - width - 8))
+      const top = anchored ? anchorRect.bottom + 8 : (headerRect?.bottom ?? 56) + 6
       return {
         left,
         top,
@@ -756,11 +766,30 @@ window.__ModuleLoader__.load({
             const wanted = pinnedSet.has(id)
             const existing = row.querySelector(`[${PIN_BADGE_ATTR}]`)
             if (wanted && !existing) {
-              const badge = document.createElement('span')
+              // A real button, not a decorative badge: the pin in the sidebar
+              // toggles the pin itself, so unpinning never requires opening the
+              // manager panel. It is inserted ahead of the official action
+              // group, so on hover it shifts aside and lines up with the two
+              // official buttons instead of covering them.
+              const badge = document.createElement('button')
+              badge.type = 'button'
               badge.setAttribute(PIN_BADGE_ATTR, '')
               badge.className = 'wsm-sidebar-pin'
+              badge.title = t()('unpin')
+              badge.setAttribute('aria-label', t()('unpin'))
               badge.innerHTML =
                 '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h6v7l1 1 1-1v-7h6v-2c-1.66 0-3-1.34-3-3z"/></svg>'
+              // The official project row is a div with onClick (expand/collapse)
+              // and may itself be draggable. The pin press must not bubble: no
+              // expand, no row drag starting under the pointer.
+              const swallow = (event) => event.stopPropagation()
+              badge.addEventListener('pointerdown', swallow)
+              badge.addEventListener('mousedown', swallow)
+              badge.addEventListener('click', (event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                togglePin(id)
+              })
               const actions = row.querySelector('[class*="rowActions"]')
               if (actions && actions.parentElement === row) row.insertBefore(badge, actions)
               else row.appendChild(badge)
@@ -966,15 +995,20 @@ window.__ModuleLoader__.load({
           const workspaces = useSnapshot(ctx.workspaces.list)
           const sessions = useSnapshot(ctx.sessions.list)
           const state = useStore(prefs)
+          const shell = useStore(panel)
           const [confirm, setConfirm] = React.useState(null)
           const [busy, setBusy] = React.useState(false)
           const [error, setError] = React.useState(null)
-          const [pos, setPos] = React.useState(measure)
+          // Position comes from the launcher button captured at click time; the
+          // button itself is unmounted while the panel is open.
+          const [pos, setPos] = React.useState(() => measure(shell.anchor))
           const [drag, setDrag] = React.useState(null)
           const [settle, setSettle] = React.useState(null)
           const [localOrder, setLocalOrder] = React.useState(null)
           const [reloc, setReloc] = React.useState(null)
           const [relocResult, setRelocResult] = React.useState(null)
+          // Filter box at the top: the rows below narrow on every keystroke.
+          const [filter, setFilter] = React.useState('')
           const dragRef = React.useRef(null)
           const pointerY = React.useRef(0)
           const settleTimer = React.useRef(undefined)
@@ -990,7 +1024,7 @@ window.__ModuleLoader__.load({
           )
 
           React.useEffect(() => {
-            const update = () => setPos(measure())
+            const update = () => setPos(measure(panel.get().anchor))
             update()
             window.addEventListener('resize', update)
             const onKey = (event) => {
@@ -1012,9 +1046,17 @@ window.__ModuleLoader__.load({
           const itemsById = new Map(items.map((w) => [w.workspaceId, w]))
           // The committed order is applied optimistically while the Host writes
           // land, so the rows do not fall back to the old order between awaits.
-          const rowsItems = localOrder
+          const rawItems = localOrder
             ? localOrder.map((id) => itemsById.get(id)).filter(Boolean)
             : items
+          // Live filter: case-insensitive substring over the row label only
+          // (title, falling back to the path when title is empty). Matching the
+          // full path is actively harmful: sibling workspaces under one parent
+          // share the whole prefix, so any fragment matches them all.
+          const query = filter.trim().toLowerCase()
+          const rowsItems = query
+            ? rawItems.filter((w) => (w.title || w.path || '').toLowerCase().includes(query))
+            : rawItems
 
           const run = async (operation) => {
             if (busy) return
@@ -1080,7 +1122,7 @@ window.__ModuleLoader__.load({
           // translate with a transition to open the target slot, and the drop
           // index is resolved from the measured row heights every frame.
           const beginDrag = (event, index) => {
-            if (busy || confirm || reloc || dragRef.current) return
+            if (busy || confirm || reloc || dragRef.current || query) return
             if (event.pointerType === 'mouse' && event.button !== 0) return
             const list = listRef.current
             if (!list) return
@@ -1464,6 +1506,27 @@ window.__ModuleLoader__.load({
             ),
             h(
               'div',
+              { className: 'wsm-filterbar' },
+              h('input', {
+                type: 'text',
+                className: 'wsm-filter',
+                placeholder: tr('filterPlaceholder'),
+                value: filter,
+                spellCheck: false,
+                onChange: (event) => setFilter(event.target.value),
+                onKeyDown: (event) => {
+                  // Escape in the filter clears it first; an empty filter lets
+                  // Escape keep its usual meaning (the window handler ignores
+                  // input targets, so the panel stays open).
+                  if (event.key === 'Escape' && filter) {
+                    event.preventDefault()
+                    setFilter('')
+                  }
+                },
+              }),
+            ),
+            h(
+              'div',
               { className: 'wsm-toolbar' },
               h(
                 'button',
@@ -1492,7 +1555,11 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'wsm-list', ref: listRef },
-              items.length === 0 ? h('div', { className: 'wsm-empty' }, tr('none')) : rows,
+              items.length === 0
+                ? h('div', { className: 'wsm-empty' }, tr('none'))
+                : rows.length === 0
+                  ? h('div', { className: 'wsm-empty' }, tr('noMatch'))
+                  : rows,
             ),
             confirm?.kind === 'clean'
               ? h(
@@ -1582,8 +1649,6 @@ window.__ModuleLoader__.load({
                 },
                 tr('cleanEmptyCount', { n: emptyIds.length }),
               ),
-              h('div', { className: 'wsm-note' }, tr('autoRiseHint')),
-              h('div', { className: 'wsm-note' }, tr('note')),
             ),
           )
         }
@@ -1592,16 +1657,33 @@ window.__ModuleLoader__.load({
           const anchor = useAnchor()
           const tr = useTranslate()
           const open = useStore(panel)
-          if (!anchor.visible || open.open) return null
+          if (!anchor.visible) return null
+          // The button stays put while the panel is open — it is the anchor the
+          // panel hangs off, and hiding it made the popover look unattached.
+          // It is lifted above the backdrop (900) so a second click still reaches
+          // it and toggles the panel shut; the card never overlaps it.
           return h(
             'button',
             {
               type: 'button',
               className: 'wsm-launcher',
-              style: { left: anchor.left, top: anchor.top },
-              title: tr('open'),
-              'aria-label': tr('open'),
-              onClick: () => panel.set({ open: true }),
+              'data-active': open.open ? 'true' : undefined,
+              style: { left: anchor.left, top: anchor.top, zIndex: open.open ? 902 : undefined },
+              title: tr(open.open ? 'close' : 'open'),
+              'aria-label': tr(open.open ? 'close' : 'open'),
+              'aria-expanded': open.open ? 'true' : 'false',
+              onClick: (event) => {
+                if (open.open) {
+                  panel.set({ open: false })
+                  return
+                }
+                // Capture the button rectangle: the popover anchors on it.
+                const rect = event.currentTarget.getBoundingClientRect()
+                panel.set({
+                  open: true,
+                  anchor: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+                })
+              },
             },
             iconManage(),
           )
