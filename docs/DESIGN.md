@@ -96,3 +96,30 @@ React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂�
 `npm stage publish` 只把包送进 stage 队列，维护者用 2FA 批准后才对外可见——这是 npm 现在的默认设计，不是配置没生效。批准入口在 npmjs.com 的包页面，或本地 `npm stage approve`。
 
 npm 现在把直接 `npm publish` 标为不推荐：Trusted Publisher 配置提供了 **stage-only** 选项，勾上后该 workflow 的 `npm publish` 会被拒绝，只接受 `npm stage publish`。本地手动发版也走同一套——`npm stage publish` 再批准，不要再用裸 `npm publish`。
+
+## 上架插件市场
+
+市场的目录数据不在 dshmarket 仓库里，而在 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 的 `data/plugins/*.yml`：一个插件一个文件，两个 README 由脚本从这些 YAML 生成，手改 README 会被覆盖。上架 = 往那个仓库提一个 PR，只加一个文件。
+
+条目形状（本仓库 `market/Aeroscis__dsh-workspace-manager.yml` 是副本，市场那边只读对方仓库，改描述要两边同步）：
+
+```yaml
+url: https://github.com/Aeroscis/dsh-workspace-manager
+name: Aeroscis/dsh-workspace-manager
+category: ui
+description:
+  en: '…'
+  zh: '…'
+icon: https://raw.githubusercontent.com/Aeroscis/dsh-workspace-manager/main/assets/icon-180.png
+```
+
+几条硬规则，错了 CI 直接拒：
+
+- 文件名必须等于 `slugFor(url)`，即 `Aeroscis__dsh-workspace-manager.yml`；monorepo 子包是 `owner__repo--packages-x.yml`。
+- 只允许 `url` / `name` / `category` / `description` / `icon` / `tarball` 六个字段，多写一个都会被指出；npm 包不由条目声明，市场按仓库的 `package.json.repository` 自动解析。
+- `description.en` 必填、单行；含 `: `（冒号加空格）必须加引号。`zh` 可选，缺了维护者会补。
+- `icon` 必须是 GitHub 托管的**位图**（`.png/.jpg/.webp`），SVG 不行；`assets/icon-180.png` 由 `icon.svg` 转换而来：`npm exec --package=sharp-cli -- sharp -i icon.svg -o assets/icon-180.png resize 180 180`。
+- 仓库前置条件：`package.json` 声明 `dsh.bundle`（本仓库已有）；仓库创建满 1 天；仓库带 `dsh-plugin` topic。
+- 描述会被审核者拿去和代码核对，夸大会被打回；分类选不准则不会，维护者会直接改。
+
+条目通过只代表形状合格，合并前维护者会读代码。合并后通常在一天内出现在市场与站点上。
