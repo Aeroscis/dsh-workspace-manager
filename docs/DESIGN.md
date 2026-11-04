@@ -94,3 +94,5 @@ React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂�
 几个约束：npm CLI 需 ≥ 11.15（workflow 里低于此版本会自动 `npm install -g npm@11`）；`id-token: write` 不能省，否则拿不到 OIDC token；标签与 `package.json` 版本不一致时 workflow 直接失败。
 
 `npm stage publish` 只把包送进 stage 队列，维护者用 2FA 批准后才对外可见——这是 npm 现在的默认设计，不是配置没生效。批准入口在 npmjs.com 的包页面，或本地 `npm stage approve`。
+
+npm 现在把直接 `npm publish` 标为不推荐：Trusted Publisher 配置提供了 **stage-only** 选项，勾上后该 workflow 的 `npm publish` 会被拒绝，只接受 `npm stage publish`。本地手动发版也走同一套——`npm stage publish` 再批准，不要再用裸 `npm publish`。
