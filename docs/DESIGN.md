@@ -99,6 +99,10 @@ React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂�
 
 npm 现在把直接 `npm publish` 标为不推荐：Trusted Publisher 配置提供了 **stage-only** 选项，勾上后该 workflow 的 `npm publish` 会被拒绝，只接受 `npm stage publish`。本地手动发版也走同一套——`npm stage publish` 再批准，不要再用裸 `npm publish`。
 
+## 行内按钮的可见性
+
+图钉常显、其余三个动作淡显（`.wsm-reveal{opacity:.45}`，悬停行或 `:focus-within` 时 1）：图钉是**状态**（空心=未置顶、实心=已置顶），藏着就没法扫一眼看出哪些置顶；打开目录 / 修改路径 / 删除是**动作**，不带状态，但完全隐藏会让人不知道有这些操作（实测用户问过「为什么只有图钉是常显的」），所以常驻淡显而不是悬停才出现。禁用态再降到 .25。
+
 ## 面板宽度
 
 宽度走三个纯函数（`client.js` 的 `// ---- panel width` 块，`test/panel-width.test.mjs` 直接切片测）：

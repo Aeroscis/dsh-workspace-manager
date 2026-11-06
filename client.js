@@ -510,8 +510,9 @@ window.__ModuleLoader__.load({
 .wsm-icon{width:22px;height:22px;flex:none;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .wsm-icon:hover{background:var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary)}
 .wsm-pin[data-on="true"]{color:var(--dsw-alias-state-warn-primary)}
-.wsm-reveal{opacity:0;transition:opacity .12s}
+.wsm-reveal{opacity:.45;transition:opacity .12s}
 .wsm-row:hover .wsm-reveal,.wsm-row:focus-within .wsm-reveal{opacity:1}
+.wsm-reveal:disabled{opacity:.25}
 .wsm-danger:hover{color:var(--dsw-alias-state-error-primary)}
 .wsm-confirm{margin:2px 2px 6px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .wsm-confirm-title{font-size:12.5px;font-weight:600}
