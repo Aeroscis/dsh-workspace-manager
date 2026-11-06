@@ -49,7 +49,7 @@
     "dsh": "^0.2.1-rc.3"
   },
   "scripts": {
-    "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs && node test/relocate.test.mjs && node test/open.test.mjs",
+    "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs && node test/relocate.test.mjs && node test/open.test.mjs && node test/panel-width.test.mjs",
     "check": "node scripts/check-release.mjs && npm test && npm pack --dry-run"
   },
   "dsh": {

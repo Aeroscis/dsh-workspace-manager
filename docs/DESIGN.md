@@ -99,6 +99,16 @@ React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂�
 
 npm 现在把直接 `npm publish` 标为不推荐：Trusted Publisher 配置提供了 **stage-only** 选项，勾上后该 workflow 的 `npm publish` 会被拒绝，只接受 `npm stage publish`。本地手动发版也走同一套——`npm stage publish` 再批准，不要再用裸 `npm publish`。
 
+## 面板宽度
+
+宽度走三个纯函数（`client.js` 的 `// ---- panel width` 块，`test/panel-width.test.mjs` 直接切片测）：
+
+- `clampPanelWidth(value, viewport)`：下限 300，上限取 `760` 与 `视口 - 24` 的较小值；非数字退回下限。
+- `preferredPanelWidth(titleWidth, viewport)`：`titleWidth + ROW_CHROME_WIDTH`（150 = 把手 + 四个图标按钮 + 间距 + 内边距 + 边框）再过一次 clamp。面板打开时用 canvas 按行标题的实际字体量最长名字，`measureTitleWidth()` 不往 DOM 里插节点。
+- 用户的拖动结果存 `panelWidth`（localStorage 偏好），双击右边界写回 `null` 表示跟随内容。
+
+拖动时**不走 React**：`pointermove` 里直接改卡片节点的 `width` / `left`（`left` 要跟着宽度往左收，否则会顶出视口），并置 `resizingRef` 让每帧的位置跟踪循环让位；松手才 `setPos()` + 落盘。否则一次拖动会在每一帧重建整个行列表。
+
 ## 宿主侧动作
 
 `lib/actions.js` 只有一件事：在系统文件管理器里打开工作区目录。走官方 `sessionController.openWorkspacePath({ path }, signal)`——参数里不传 `action` 时按默认程序打开，对目录就是文件管理器。

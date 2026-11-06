@@ -68,6 +68,7 @@ window.__ModuleLoader__.load({
         noMatch: '没有匹配的工作区',
         filterPlaceholder: '筛选：按名称',
         openFolder: '在文件管理器中打开',
+        resizeWidth: '拖动调整宽度（双击恢复默认）',
         repath: '修改路径',
         repathTitle: '修改「{name}」的路径',
         repathDeadTitle: '重新绑定「{name}」（原目录已不存在）',
@@ -120,6 +121,7 @@ window.__ModuleLoader__.load({
         noMatch: 'No matching workspaces',
         filterPlaceholder: 'Filter by name',
         openFolder: 'Open in file manager',
+        resizeWidth: 'Drag to resize (double-click to reset)',
         repath: 'Change path',
         repathTitle: 'Change path of “{name}”',
         repathDeadTitle: 'Rebind “{name}” (directory is gone)',
@@ -231,7 +233,7 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------- preferences
     function readPrefs() {
-      const fallback = { autoRise: true, pinned: [] }
+      const fallback = { autoRise: true, pinned: [], panelWidth: null }
       try {
         const raw = localStorage.getItem(PREFS_KEY)
         if (!raw) return fallback
@@ -239,6 +241,8 @@ window.__ModuleLoader__.load({
         return {
           autoRise: parsed.autoRise !== false,
           pinned: Array.isArray(parsed.pinned) ? parsed.pinned.filter((id) => typeof id === 'string') : [],
+          // null = 跟随内容自动定宽；数字 = 用户拖出来的宽度。
+          panelWidth: Number.isFinite(parsed.panelWidth) && parsed.panelWidth > 0 ? Math.round(parsed.panelWidth) : null,
         }
       } catch {
         return fallback
@@ -451,6 +455,8 @@ window.__ModuleLoader__.load({
 .wsm-launcher[data-active="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
 .wsm-card{position:fixed;z-index:901;display:flex;flex-direction:column;overflow:hidden;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:13px;line-height:1.45;pointer-events:auto}
 .wsm-card *{box-sizing:border-box}
+.wsm-resize{position:absolute;top:0;right:0;bottom:0;width:7px;cursor:col-resize;touch-action:none;background:transparent}
+.wsm-resize:hover,.wsm-resize:active{background:var(--dsw-alias-brand-primary);opacity:.32}
 .wsm-head{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .wsm-title{flex:1;font-size:13px;font-weight:600}
 .wsm-close{width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0}
@@ -525,13 +531,39 @@ window.__ModuleLoader__.load({
     // real flex item, so the dock moves it around like any official button.
     const LAUNCHER_ATTR = 'data-wsm-launcher'
 
+    // ---------------------------------------------------------- panel width
+    // Pure width math: the drag handle, the content-based default and the
+    // viewport clamp all go through these, so they can be tested without a DOM.
+    // `ROW_CHROME_WIDTH` is everything in a row that is not the title: grip,
+    // four icon buttons, their gaps, row/list paddings and the card border.
+    const PANEL_MIN_WIDTH = 300
+    const PANEL_MAX_WIDTH = 760
+    const ROW_CHROME_WIDTH = 150
+
+    function clampPanelWidth(value, viewportWidth) {
+      const viewport = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 1024
+      const ceiling = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, viewport - 24))
+      const width = Number.isFinite(value) ? Math.round(value) : PANEL_MIN_WIDTH
+      return Math.max(PANEL_MIN_WIDTH, Math.min(ceiling, width))
+    }
+
+    /** Default width: wide enough for the longest workspace name, capped by the viewport. */
+    function preferredPanelWidth(titleWidth, viewportWidth) {
+      const wanted = (Number.isFinite(titleWidth) ? titleWidth : 0) + ROW_CHROME_WIDTH
+      return clampPanelWidth(Math.max(PANEL_MIN_WIDTH, wanted), viewportWidth)
+    }
+
     // The popover hangs off the launcher's rectangle: left edge at the left edge
-    // of the button, dropping below it. Width follows the sidebar column.
-    function measure(anchorRect) {
+    // of the button, dropping below it. Width is the user's choice when they
+    // dragged the right edge, otherwise the content-based default.
+    function measure(anchorRect, widthOverride) {
       const header = document.querySelector('[class*="sectionHeader"]')
       const rootRect = header?.parentElement?.getBoundingClientRect()
       const headerRect = header?.getBoundingClientRect()
-      const width = Math.max(272, Math.min(420, (rootRect?.width ?? 300) - 12))
+      const width = clampPanelWidth(
+        Number.isFinite(widthOverride) ? widthOverride : Math.max(PANEL_MIN_WIDTH, (rootRect?.width ?? 300) - 12),
+        window.innerWidth,
+      )
       const anchored = anchorRect && Number.isFinite(anchorRect.left)
       const rawLeft = anchored ? anchorRect.left - 6 : (rootRect?.left ?? 64) + 6
       const left = Math.max(8, Math.min(rawLeft, window.innerWidth - width - 8))
@@ -810,6 +842,22 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, DICT), 'workspace-manager: locale')
 
         const t = () => ctx.locale.bind(NS)
+
+        // 最长标题的像素宽度：面板默认宽度据此决定，让名字整行显示。
+        // 用 canvas 量而不是往 DOM 里插节点——开面板时不能有可见的重排。
+        function measureTitleWidth(titles) {
+          if (typeof document === 'undefined') return 0
+          const context = document.createElement('canvas').getContext?.('2d')
+          if (!context) return 0
+          const sample = document.querySelector('.wsm-row-title')
+          const style = sample ? getComputedStyle(sample) : null
+          context.font = style
+            ? `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+            : '12.5px sans-serif'
+          let widest = 0
+          for (const title of titles) widest = Math.max(widest, context.measureText(title).width)
+          return widest
+        }
 
         // ---------------------------------------------------------- launcher
         // The button is a plain DOM node in the official header row (React
@@ -1155,6 +1203,12 @@ window.__ModuleLoader__.load({
           // button only appears once the Host confirms it, so a headless host
           // never shows a control that cannot work.
           const [canOpenPath, setCanOpenPath] = React.useState(false)
+          // Width: a dragged width wins; otherwise the panel sizes itself to the
+          // longest workspace name once, at open time.
+          const [autoWidth, setAutoWidth] = React.useState(null)
+          const widthRef = React.useRef(null)
+          const cardRef = React.useRef(null)
+          const resizingRef = React.useRef(false)
           const dragRef = React.useRef(null)
           const pointerY = React.useRef(0)
           const settleTimer = React.useRef(undefined)
@@ -1183,6 +1237,19 @@ window.__ModuleLoader__.load({
             }
           }, [])
 
+          // Width source of truth for the frame loop. Kept out of the render
+          // path: a render during the drag (setPos comes from the loop) must not
+          // snap the width back to the stored value mid-gesture.
+          React.useEffect(() => {
+            widthRef.current = state.panelWidth ?? autoWidth
+          }, [state.panelWidth, autoWidth])
+
+          React.useEffect(() => {
+            if (state.panelWidth !== null) return
+            const titles = workspaces.items.map((workspace) => workspace.title || workspace.path || '')
+            setAutoWidth(Math.max(0, measureTitleWidth(titles)))
+          }, [])
+
           // The card hangs off the launcher button, and the launcher is a
           // normal child of the sidebar header: it slides when the dock is
           // scrolled, resized or collapsed. Tracking its rectangle every frame
@@ -1191,6 +1258,10 @@ window.__ModuleLoader__.load({
             let frame
             let last = ''
             const track = () => {
+              if (resizingRef.current) {
+                frame = requestAnimationFrame(track)
+                return
+              }
               const node = document.querySelector(`[${LAUNCHER_ATTR}]`)
               const rect = node?.getBoundingClientRect()
               const captured = panel.get().anchor
@@ -1198,6 +1269,7 @@ window.__ModuleLoader__.load({
                 rect && rect.width > 0
                   ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
                   : captured,
+                widthRef.current ?? undefined,
               )
               const key = `${next.left}|${next.top}|${next.width}|${next.maxHeight}`
               if (key !== last) {
@@ -1268,6 +1340,52 @@ window.__ModuleLoader__.load({
           const rowsItems = query
             ? rawItems.filter((w) => (w.title || w.path || '').toLowerCase().includes(query))
             : rawItems
+
+          // Drag the right edge: the pointer x is all that matters; the frame
+          // loop picks the new width up from widthRef and the card follows.
+          const beginResize = (event) => {
+            if (event.pointerType === 'mouse' && event.button !== 0) return
+            // No preventDefault: it would suppress the compatibility click and
+            // with it the double-click that resets the width. Text selection is
+            // blocked during the gesture instead.
+            event.stopPropagation()
+            event.currentTarget.setPointerCapture?.(event.pointerId)
+            const previousSelect = document.body.style.userSelect
+            document.body.style.userSelect = 'none'
+            const startX = event.clientX
+            const startWidth = pos.width
+            let next = startWidth
+            let lastPos = pos
+            resizingRef.current = true
+            const move = (moveEvent) => {
+              next = clampPanelWidth(startWidth + (moveEvent.clientX - startX), window.innerWidth)
+              widthRef.current = next
+              // Write the card directly: a React render per pointer move would
+              // rebuild every row for nothing.
+              lastPos = measure(panel.get().anchor, next)
+              if (cardRef.current) {
+                cardRef.current.style.width = `${lastPos.width}px`
+                cardRef.current.style.left = `${lastPos.left}px`
+              }
+            }
+            const finish = () => {
+              window.removeEventListener('pointermove', move)
+              window.removeEventListener('pointerup', finish)
+              window.removeEventListener('pointercancel', finish)
+              resizingRef.current = false
+              document.body.style.userSelect = previousSelect
+              setPos(lastPos)
+              prefs.set({ ...prefs.get(), panelWidth: next })
+            }
+            window.addEventListener('pointermove', move)
+            window.addEventListener('pointerup', finish)
+            window.addEventListener('pointercancel', finish)
+          }
+
+          const resetWidth = () => {
+            prefs.set({ ...prefs.get(), panelWidth: null })
+            widthRef.current = null
+          }
 
           const run = async (operation) => {
             if (busy) return
@@ -1710,6 +1828,7 @@ window.__ModuleLoader__.load({
             'div',
             {
               className: 'wsm-card',
+              ref: cardRef,
               style: { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight },
               onMouseDown: (event) => event.stopPropagation(),
             },
@@ -1875,6 +1994,16 @@ window.__ModuleLoader__.load({
                 tr('cleanEmptyCount', { n: emptyIds.length }),
               ),
             ),
+            // Right-edge grip. Double-click returns to the content-based width.
+            h('div', {
+              className: 'wsm-resize',
+              role: 'separator',
+              'aria-orientation': 'vertical',
+              'aria-label': tr('resizeWidth'),
+              title: tr('resizeWidth'),
+              onPointerDown: beginResize,
+              onDoubleClick: resetWidth,
+            }),
           )
         }
 
