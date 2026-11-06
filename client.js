@@ -1,10 +1,13 @@
 /**
  * Workspace Manager — browser half.
  *
- * Entry point: a launcher button is rendered in the official shell.overlay slot
- * and positioned over the blank space in the official workspaces panel header
- * (the header is width-locked, so nothing is inserted into its DOM). The button
- * opens a manager popover in the same slot.
+ * Entry point: the launcher button is a real child of the official workspaces
+ * panel header, inserted in the free space between the section title and the
+ * search field. Because it sits in that flex row it scrolls, slides and
+ * collapses together with the dock, exactly like the shipped buttons; nothing
+ * is positioned with coordinates. The shipped action group (width-locked to
+ * two buttons) is left untouched. The popover itself renders in the
+ * shell.overlay slot and follows the button.
  *
  * Ordering uses only official Client APIs:
  *   ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId)   (Host-persisted order)
@@ -64,6 +67,7 @@ window.__ModuleLoader__.load({
         none: '没有工作区',
         noMatch: '没有匹配的工作区',
         filterPlaceholder: '筛选：按名称',
+        openFolder: '在文件管理器中打开',
         repath: '修改路径',
         repathTitle: '修改「{name}」的路径',
         repathDeadTitle: '重新绑定「{name}」（原目录已不存在）',
@@ -115,6 +119,7 @@ window.__ModuleLoader__.load({
         none: 'No workspaces',
         noMatch: 'No matching workspaces',
         filterPlaceholder: 'Filter by name',
+        openFolder: 'Open in file manager',
         repath: 'Change path',
         repathTitle: 'Change path of “{name}”',
         repathDeadTitle: 'Rebind “{name}” (directory is gone)',
@@ -191,6 +196,25 @@ window.__ModuleLoader__.load({
       if (!body || body.ok !== true) {
         throw new Error(body?.message ?? `probe HTTP ${response.status}`)
       }
+      return body
+    }
+
+    async function apiCapabilities() {
+      const response = await fetch('/dsh-workspace-manager/api/capabilities')
+      const body = await response.json().catch(() => undefined)
+      if (!body || body.ok !== true) throw new Error(body?.message ?? `capabilities HTTP ${response.status}`)
+      return body
+    }
+
+    async function apiOpenFolder(workspaceId) {
+      const response = await fetch('/dsh-workspace-manager/api/open', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workspaceId }),
+      })
+      const body = await response.json().catch(() => undefined)
+      if (!body) throw new Error(`open HTTP ${response.status}`)
+      if (body.ok !== true) throw new Error(body.message ?? '打开失败')
       return body
     }
 
@@ -312,24 +336,13 @@ window.__ModuleLoader__.load({
     }
 
     // ----------------------------------------------------------------- icons
-    function iconManage() {
-      return h(
-        'svg',
-        {
-          viewBox: '0 0 16 16',
-          width: 14,
-          height: 14,
-          fill: 'currentColor',
-          fillRule: 'evenodd',
-          'aria-hidden': true,
-        },
-        h('path', {
-          d:
-            'M14.8 8L11.9 10.25L11.4 13.89L8 12.5L4.6 13.89L4.1 10.25L1.2 8L4.1 5.75L4.6 2.11L8 3.5L11.4 2.11L11.9 5.75Z' +
-            'M10.2 8a2.2 2.2 0 1 0-4.4 0 2.2 2.2 0 1 0 4.4 0Z',
-        }),
-      )
-    }
+    // The manager button is a DOM node inside the official header rather than a
+    // React element, so its icon ships as markup: the sync pass can rebuild the
+    // node whenever the official row is replaced.
+    const MANAGE_ICON_SVG =
+      '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" fill-rule="evenodd" aria-hidden="true">' +
+      '<path d="M14.8 8L11.9 10.25L11.4 13.89L8 12.5L4.6 13.89L4.1 10.25L1.2 8L4.1 5.75L4.6 2.11L8 3.5L11.4 2.11L11.9 5.75Z' +
+      'M10.2 8a2.2 2.2 0 1 0-4.4 0 2.2 2.2 0 1 0 4.4 0Z"></path></svg>'
 
     // Hamburger grip: three rules, the universal drag affordance.
     function iconGrip() {
@@ -410,12 +423,32 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // Plain folder: the action opens the directory, it does not move it.
+    function iconFolder() {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 16 16',
+          width: 13,
+          height: 13,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.3,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        h('path', {
+          d: 'M2.4 12.2V3.8c0-.4.3-.7.7-.7h2.4l1.2 1.5h5.2c.4 0 .7.3.7.7v6.9c0 .4-.3.7-.7.7H3.1c-.4 0-.7-.3-.7-.7Z',
+        }),
+      )
+    }
+
     // ------------------------------------------------------------------ css
     const CSS = `
-.wsm-launcher{position:fixed;z-index:5;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;pointer-events:auto}
-.wsm-launcher:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.wsm-launcher[data-active="true"]{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-brand-primary)}
-.wsm-backdrop{position:fixed;inset:0;z-index:900;background:transparent;pointer-events:auto}
+.wsm-launcher{flex:none;width:28px;height:28px;margin-left:auto;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.wsm-launcher:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.wsm-launcher[data-active="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
 .wsm-card{position:fixed;z-index:901;display:flex;flex-direction:column;overflow:hidden;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:13px;line-height:1.45;pointer-events:auto}
 .wsm-card *{box-sizing:border-box}
 .wsm-head{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}
@@ -485,67 +518,15 @@ window.__ModuleLoader__.load({
 `
 
     // --------------------------------------------------------- header anchor
-    // The shipped header locks its action group to 60px and clips, so a fourth
-    // button inserted there hides the "add workspace" button. The launcher is
-    // therefore rendered in the overlay layer and positioned over the free gap
-    // between the section label and the search button; it consumes no layout.
-    function measureAnchor() {
-      const header = document.querySelector('[class*="sectionHeader"]')
-      if (!header) return { visible: false }
-      const rect = header.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return { visible: false }
-      if (document.querySelector('[class*="searchSlotExpanded"]')) return { visible: false }
-      const search = header.querySelector('[class*="searchButton"]')
-      const label = header.querySelector('[class*="sectionLabel"]')
-      const searchRect = search?.getBoundingClientRect()
-      if (!searchRect || searchRect.width <= 0) return { visible: false }
-      const left = searchRect.left - 34
-      const labelRect = label?.getBoundingClientRect()
-      if (labelRect && labelRect.width > 0 && left < labelRect.right + 4) return { visible: false }
-      if (left < rect.left + 2 || left + 28 > rect.right) return { visible: false }
-      return { visible: true, left, top: rect.top + 4 }
-    }
+    // The shipped header clips its action group to 60px (exactly two buttons),
+    // so a third control cannot live there without pushing the "add workspace"
+    // button out of view. The launcher therefore sits in the header row itself,
+    // in the free space between the section title and the search field: it is a
+    // real flex item, so the dock moves it around like any official button.
+    const LAUNCHER_ATTR = 'data-wsm-launcher'
 
-    function useAnchor() {
-      const [anchor, setAnchor] = React.useState(measureAnchor)
-      React.useEffect(() => {
-        let frame
-        const update = () => {
-          frame = undefined
-          setAnchor(measureAnchor())
-        }
-        const schedule = () => {
-          if (frame !== undefined) return
-          frame = requestAnimationFrame(update)
-        }
-        schedule()
-        window.addEventListener('resize', schedule)
-        const header = document.querySelector('[class*="sectionHeader"]')
-        let observer
-        let resizeObserver
-        if (header) {
-          observer = new MutationObserver(schedule)
-          observer.observe(header, { attributes: true, subtree: true, attributeFilter: ['class'] })
-          if (typeof ResizeObserver === 'function' && header.parentElement) {
-            resizeObserver = new ResizeObserver(schedule)
-            resizeObserver.observe(header.parentElement)
-          }
-        }
-        return () => {
-          window.removeEventListener('resize', schedule)
-          observer?.disconnect()
-          resizeObserver?.disconnect()
-          if (frame !== undefined) cancelAnimationFrame(frame)
-        }
-      }, [])
-      return anchor
-    }
-
-    // ---------------------------------------------------------------- engine
-    // The panel hangs off the button that opened it: its left edge sits at the
-    // button's left edge and it drops below it, instead of snapping to the
-    // sidebar column. Width still follows the column so the card keeps the
-    // list's proportions; it is clamped into the viewport on the right.
+    // The popover hangs off the launcher's rectangle: left edge at the left edge
+    // of the button, dropping below it. Width follows the sidebar column.
     function measure(anchorRect) {
       const header = document.querySelector('[class*="sectionHeader"]')
       const rootRect = header?.parentElement?.getBoundingClientRect()
@@ -830,6 +811,167 @@ window.__ModuleLoader__.load({
 
         const t = () => ctx.locale.bind(NS)
 
+        // ---------------------------------------------------------- launcher
+        // The button is a plain DOM node in the official header row (React
+        // rebuilds that row at will, so the sync pass re-inserts it). It lives
+        // between the section title and the search field because that is where
+        // the shipped layout keeps free space: the search slot owns the
+        // free-space margin, and the button takes that margin over while it is
+        // mounted. Animations, scrolling and the dock's own shift therefore
+        // carry the button along with the official controls — no coordinates.
+        let launcherNode = null
+        let launcherSlot = null
+        let launcherSuppressedWidth = -1
+        let launcherRemeasure = false
+        let launcherTimer
+        let launcherHeader = null
+        let launcherResizer = null
+        let launcherClassObserver = null
+        let launcherPaintKey = ''
+
+        function removeLauncher() {
+          if (launcherSlot) {
+            launcherSlot.style.marginLeft = ''
+            launcherSlot = null
+          }
+          if (launcherNode) {
+            launcherNode.remove()
+            launcherNode = null
+          }
+          launcherPaintKey = ''
+        }
+
+        function paintLauncher() {
+          if (!launcherNode) return
+          const open = panel.get().open === true
+          const label = t()(open ? 'close' : 'open')
+          const key = `${open}|${label}`
+          if (key === launcherPaintKey) return
+          launcherPaintKey = key
+          launcherNode.dataset.active = open ? 'true' : 'false'
+          launcherNode.setAttribute('aria-expanded', open ? 'true' : 'false')
+          launcherNode.setAttribute('aria-label', label)
+          launcherNode.title = label
+        }
+
+        function createLauncherNode() {
+          const node = document.createElement('button')
+          node.type = 'button'
+          node.setAttribute(LAUNCHER_ATTR, '')
+          node.className = 'wsm-launcher'
+          node.innerHTML = MANAGE_ICON_SVG
+          // The row itself handles presses; the button's must not reach it.
+          const swallow = (event) => event.stopPropagation()
+          node.addEventListener('pointerdown', swallow)
+          node.addEventListener('mousedown', swallow)
+          node.addEventListener('click', (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            if (panel.get().open) {
+              panel.set({ open: false })
+              return
+            }
+            const rect = node.getBoundingClientRect()
+            panel.set({
+              open: true,
+              anchor: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+            })
+          })
+          return node
+        }
+
+        function watchLauncherHeader(header) {
+          if (launcherHeader === header) return
+          launcherResizer?.disconnect()
+          launcherClassObserver?.disconnect()
+          launcherHeader = header
+          // Expanding the search replaces the row's shape (searchSlotExpanded /
+          // headerActionsHidden) through class names only — no childList
+          // mutation, so the row is watched directly.
+          launcherClassObserver = new MutationObserver(() => scheduleLauncher(0))
+          launcherClassObserver.observe(header, {
+            attributes: true,
+            subtree: true,
+            attributeFilter: ['class'],
+          })
+          if (typeof ResizeObserver !== 'function') return
+          launcherResizer = new ResizeObserver(() => {
+            launcherSuppressedWidth = -1
+            launcherRemeasure = true
+            scheduleLauncher(0)
+          })
+          launcherResizer.observe(header)
+        }
+
+        // The header clips (`overflow:hidden`): the third control only fits
+        // while there is spare room, and when it does not, the row is left
+        // exactly as shipped. The fit is measured after inserting (see below).
+        function syncLauncher() {
+          const header = document.querySelector('[class*="sectionHeader"]')
+          const slot = header?.querySelector('[class*="searchSlot"]')
+          if (!header || !slot || header.clientWidth <= 0) {
+            removeLauncher()
+            return
+          }
+          watchLauncherHeader(header)
+          // Searching replaces the whole row; the rail layout has no title gap.
+          if (header.querySelector('[class*="searchSlotExpanded"]')) {
+            removeLauncher()
+            return
+          }
+          if (launcherSuppressedWidth >= 0 && launcherSuppressedWidth === header.clientWidth) {
+            removeLauncher()
+            return
+          }
+          // Already in place: only the state label can have changed. Re-checking
+          // the fit here would force a synchronous layout on every mutation of
+          // the page (the panel's own row list included) — so it is only redone
+          // when the column width actually changed.
+          const attached =
+            launcherNode !== null && launcherNode.parentElement === header && launcherNode.nextSibling === slot
+          if (attached && !launcherRemeasure) {
+            paintLauncher()
+            return
+          }
+          if (!attached) {
+            if (!launcherNode) launcherNode = createLauncherNode()
+            // React may drop the node or reorder the row at any time.
+            header.insertBefore(launcherNode, slot)
+            launcherSlot = slot
+            slot.style.marginLeft = '0'
+          }
+          launcherSuppressedWidth = -1
+          launcherRemeasure = false
+          paintLauncher()
+          // `overflow:hidden` + `justify-content:flex-end` means content too
+          // wide is clipped on the LEFT and `scrollWidth` never grows, so the
+          // squeeze is measured instead: the search slot shrinks below its 28px
+          // cap first, then the section label is pushed out of the row.
+          const headerRect = header.getBoundingClientRect()
+          const slotRect = slot.getBoundingClientRect()
+          const label = header.querySelector('[class*="sectionLabel"]')
+          const labelRect = label?.getBoundingClientRect()
+          const squeezed =
+            slotRect.width < 27 ||
+            (labelRect !== undefined && labelRect.width > 0 && labelRect.left < headerRect.left - 0.5)
+          if (squeezed) {
+            launcherSuppressedWidth = header.clientWidth
+            removeLauncher()
+          }
+        }
+
+        function scheduleLauncher(delay) {
+          if (launcherTimer !== undefined) return
+          launcherTimer = setTimeout(() => {
+            launcherTimer = undefined
+            try {
+              syncLauncher()
+            } catch {
+              /* the official DOM can be mid-flight; the next pass recovers */
+            }
+          }, delay)
+        }
+
         // ------------------------------------------------------------ surface
         function useTranslate() {
           const [, setTick] = React.useState(0)
@@ -999,8 +1141,8 @@ window.__ModuleLoader__.load({
           const [confirm, setConfirm] = React.useState(null)
           const [busy, setBusy] = React.useState(false)
           const [error, setError] = React.useState(null)
-          // Position comes from the launcher button captured at click time; the
-          // button itself is unmounted while the panel is open.
+          // Initial position uses the rectangle captured at click time; the
+          // frame loop below then follows the live button.
           const [pos, setPos] = React.useState(() => measure(shell.anchor))
           const [drag, setDrag] = React.useState(null)
           const [settle, setSettle] = React.useState(null)
@@ -1009,6 +1151,10 @@ window.__ModuleLoader__.load({
           const [relocResult, setRelocResult] = React.useState(null)
           // Filter box at the top: the rows below narrow on every keystroke.
           const [filter, setFilter] = React.useState('')
+          // Host capability: opening a folder needs the desktop opener. The
+          // button only appears once the Host confirms it, so a headless host
+          // never shows a control that cannot work.
+          const [canOpenPath, setCanOpenPath] = React.useState(false)
           const dragRef = React.useRef(null)
           const pointerY = React.useRef(0)
           const settleTimer = React.useRef(undefined)
@@ -1024,17 +1170,82 @@ window.__ModuleLoader__.load({
           )
 
           React.useEffect(() => {
-            const update = () => setPos(measure(panel.get().anchor))
-            update()
-            window.addEventListener('resize', update)
+            let live = true
+            apiCapabilities()
+              .then((body) => {
+                if (live) setCanOpenPath(body.canOpenPath === true)
+              })
+              .catch(() => {
+                /* Host half absent: keep the row actions it can serve. */
+              })
+            return () => {
+              live = false
+            }
+          }, [])
+
+          // The card hangs off the launcher button, and the launcher is a
+          // normal child of the sidebar header: it slides when the dock is
+          // scrolled, resized or collapsed. Tracking its rectangle every frame
+          // keeps the card attached instead of frozen at the click position.
+          React.useEffect(() => {
+            let frame
+            let last = ''
+            const track = () => {
+              const node = document.querySelector(`[${LAUNCHER_ATTR}]`)
+              const rect = node?.getBoundingClientRect()
+              const captured = panel.get().anchor
+              const next = measure(
+                rect && rect.width > 0
+                  ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+                  : captured,
+              )
+              const key = `${next.left}|${next.top}|${next.width}|${next.maxHeight}`
+              if (key !== last) {
+                last = key
+                setPos(next)
+              }
+              frame = requestAnimationFrame(track)
+            }
+            frame = requestAnimationFrame(track)
+            return () => cancelAnimationFrame(frame)
+          }, [])
+
+          React.useEffect(() => {
+            // No backdrop: a full-screen layer would cover the header button and
+            // take the toggle away. The first press outside the card closes the
+            // popover and is swallowed — pointerdown is cancelled so the
+            // compatibility click cannot reach the row underneath; the click
+            // listener is a second guard for engines that still deliver it.
+            const swallow = (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }
+            let cleanupClick
+            const onPointerDown = (event) => {
+              const target = event.target
+              if (target instanceof Element) {
+                if (target.closest('.wsm-card') || target.closest(`[${LAUNCHER_ATTR}]`)) return
+              }
+              event.preventDefault()
+              event.stopPropagation()
+              panel.set({ open: false })
+              document.addEventListener('click', swallow, { capture: true, once: true })
+              cleanupClick = setTimeout(
+                () => document.removeEventListener('click', swallow, true),
+                400,
+              )
+            }
             const onKey = (event) => {
               // Typing a path: Escape belongs to the dialog (Exit removes focus from input).
               if (event.key === 'Escape' && event.target instanceof HTMLInputElement) return
               if (event.key === 'Escape' && dragRef.current === null) panel.set({ open: false })
             }
+            document.addEventListener('pointerdown', onPointerDown, true)
             window.addEventListener('keydown', onKey)
             return () => {
-              window.removeEventListener('resize', update)
+              document.removeEventListener('pointerdown', onPointerDown, true)
+              document.removeEventListener('click', swallow, true)
+              if (cleanupClick !== undefined) clearTimeout(cleanupClick)
               window.removeEventListener('keydown', onKey)
             }
           }, [])
@@ -1453,6 +1664,20 @@ window.__ModuleLoader__.load({
                   },
                   iconPin(pinned),
                 ),
+                canOpenPath
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'wsm-icon wsm-reveal',
+                        title: tr('openFolder'),
+                        'aria-label': tr('openFolder'),
+                        disabled: busy,
+                        onClick: () => run(() => apiOpenFolder(workspace.workspaceId)),
+                      },
+                      iconFolder(),
+                    )
+                  : null,
                 h(
                   'button',
                   {
@@ -1653,58 +1878,39 @@ window.__ModuleLoader__.load({
           )
         }
 
-        function Launcher() {
-          const anchor = useAnchor()
-          const tr = useTranslate()
-          const open = useStore(panel)
-          if (!anchor.visible) return null
-          // The button stays put while the panel is open — it is the anchor the
-          // panel hangs off, and hiding it made the popover look unattached.
-          // It is lifted above the backdrop (900) so a second click still reaches
-          // it and toggles the panel shut; the card never overlaps it.
-          return h(
-            'button',
-            {
-              type: 'button',
-              className: 'wsm-launcher',
-              'data-active': open.open ? 'true' : undefined,
-              style: { left: anchor.left, top: anchor.top, zIndex: open.open ? 902 : undefined },
-              title: tr(open.open ? 'close' : 'open'),
-              'aria-label': tr(open.open ? 'close' : 'open'),
-              'aria-expanded': open.open ? 'true' : 'false',
-              onClick: (event) => {
-                if (open.open) {
-                  panel.set({ open: false })
-                  return
-                }
-                // Capture the button rectangle: the popover anchors on it.
-                const rect = event.currentTarget.getBoundingClientRect()
-                panel.set({
-                  open: true,
-                  anchor: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                })
-              },
-            },
-            iconManage(),
-          )
-        }
-
+        // The popover is the only React surface left in the overlay slot; the
+        // launcher lives in the official header (see syncLauncher). Closing on
+        // an outside press is done with a listener instead of a full-screen
+        // backdrop, so the header button itself stays clickable and toggles.
         function Surface() {
           const open = useStore(panel)
-          return h(
-            React.Fragment,
-            null,
-            h(Launcher),
-            open.open
-              ? h(
-                  React.Fragment,
-                  null,
-                  h('div', { className: 'wsm-backdrop', onMouseDown: () => panel.set({ open: false }) }),
-                  h(Panel),
-                )
-              : null,
-          )
+          return open.open ? h(Panel) : null
         }
+
+        ctx.effect(() => {
+          const observer = new MutationObserver(() => scheduleLauncher(60))
+          observer.observe(document.body, { childList: true, subtree: true })
+          const onResize = () => {
+            launcherSuppressedWidth = -1
+            launcherRemeasure = true
+            scheduleLauncher(0)
+          }
+          window.addEventListener('resize', onResize)
+          const offPanel = panel.subscribe(() => scheduleLauncher(0))
+          scheduleLauncher(0)
+          return () => {
+            observer.disconnect()
+            window.removeEventListener('resize', onResize)
+            if (launcherTimer !== undefined) clearTimeout(launcherTimer)
+            offPanel()
+            launcherResizer?.disconnect()
+            launcherResizer = null
+            launcherClassObserver?.disconnect()
+            launcherClassObserver = null
+            launcherHeader = null
+            removeLauncher()
+          }
+        }, 'workspace-manager: launcher')
 
         ctx.effect(() => {
           // HMR re-executes this bundle while the document persists: overwrite

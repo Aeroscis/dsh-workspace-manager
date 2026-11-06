@@ -4,17 +4,19 @@
 
 ## 运行位置与加载方式
 
-包分两半。宿主半边 `index.js` 挂 HTTP 路由（当前只服务路径迁移），功能本体在 `lib/`；浏览器半边 `client.js` 是一个自包含的 bundle，用 `window.__ModuleLoader__.load` 注册，React 由宿主传入。`package.json` 的 `dsh.bundle.patch` 负责插入 Loader 行，`dsh.client` 负责把 bundle 投送给 Web GUI，两处都指向同一个包名。
+包分两半。宿主半边 `index.js` 挂 HTTP 路由（路径迁移与打开工作区目录），功能本体在 `lib/`；浏览器半边 `client.js` 是一个自包含的 bundle，用 `window.__ModuleLoader__.load` 注册，React 由宿主传入。`package.json` 的 `dsh.bundle.patch` 负责插入 Loader 行，`dsh.client` 负责把 bundle 投送给 Web GUI，两处都指向同一个包名。
 
 ## 面板入口
 
-DSH 0.2.1-rc.3 的侧栏标题栏没有给插件留扩展位：它的动作容器宽度固定，且溢出内容会被裁掉，插第四个按钮会把官方的「添加工作区」挤出去。所以按钮渲染在 `shell.overlay` 槽位里，用 `position: fixed` 浮在标题与搜索按钮之间的空白处，位置由 `measureAnchor()` 用 `[class*="sectionHeader"]` 一类类名测量后算出。搜索框展开，或算出的位置与标题重叠、超出标题栏时，按钮直接不渲染。
+DSH 0.2.1-rc.3 的侧栏标题栏里，官方按钮组（`headerActions`）宽度固定为 60px 且溢出裁掉，正好放两个按钮；再往这个容器里塞第三个，官方的「添加工作区」就看不见了。但标题行的其它位置是空着的：`sectionHeader` 是 `display:flex; justify-content:flex-end`，标题标签最多占 45%，搜索槽 `searchSlot` 用一个 `margin-left:auto` 吃掉剩余空白。所以入口按钮插在 `sectionHeader` 里、`searchSlot` 之前，成为这一行的普通 flex 元素；同时把 `searchSlot` 的 `margin-left` 临时改成 `0`，让按钮来吃那段空白——官方按钮的位置和容器宽度都不动，按钮却和它们在同一条布局里。
 
-这些类名由 CSS Modules 生成，属于 DSH 未公开的结构。DSH 改版后 `measureAnchor()` 量不到锚点，按钮就不出现——这是已知限制，不是本插件的缺陷。改动这块时先在目标 DSH 版本上确认类名仍然存在。
+按钮是普通 DOM 节点，不是 React 元素：官方标题行由 React 管理，随时可能重建。`syncLauncher()` 由 body 的 `MutationObserver`（childList）、标题行自身的 `MutationObserver`（class，用来抓搜索框展开/收起）、`ResizeObserver`（栏宽）和 `panel` 订阅驱动，做的是幂等同步——节点不在正确位置就 `insertBefore`，搜索框展开（`searchSlotExpanded`）或侧栏收成窄条（没有 `searchSlot`）就移除。标题行 `overflow:hidden` 又是 `justify-content:flex-end`，放不下时内容从**左边**溢出，`scrollWidth` 不会变大，所以插入后用几何量判断：搜索槽被挤到 28px 以下，或标题标签的左边被推到标题行左边之外，就撤掉按钮并记住当时的栏宽；只有栏宽变化才重新尝试。
 
-面板挂在按钮上，不贴侧栏列：点按钮时把它的矩形存进 `panel.anchor`，`measure(anchorRect)` 据此给出 `left = 按钮左边缘 - 6`、`top = 按钮下边缘 + 8`，再夹进视口。面板宽度仍按侧栏列宽计算，所以它会盖住一段对话区——这是有意的，和 dsh-temptask 的弹层一致；不要改回「对齐侧栏左边缘」。
+这些类名由 CSS Modules 生成，属于 DSH 未公开的结构。DSH 改版后 `syncLauncher()` 找不到 `sectionHeader` / `searchSlot`，按钮就不出现——这是已知限制，不是本插件的缺陷。改动这块时先在目标 DSH 版本上确认类名仍然存在。
 
-面板打开期间按钮保持可见、显示激活态，并把 `z-index` 抬到遮罩之上（遮罩 900、卡片 901、按钮 902），这样再点一次就是收起。按钮一旦隐藏，弹层看着就没有来源了，也会失去这个关闭入口。
+面板挂在按钮上，不贴侧栏列：点按钮时把它的矩形存进 `panel.anchor`，`measure(anchorRect)` 据此给出 `left = 按钮左边缘 - 6`、`top = 按钮下边缘 + 8`，再夹进视口。面板打开期间用 `requestAnimationFrame` 每帧读按钮矩形并只在数值变化时更新位置，因此侧栏滚动、收拢时卡片跟着按钮走，不会停在点击时的位置。面板宽度仍按侧栏列宽计算，所以它会盖住一段对话区——这是有意的，和 dsh-temptask 的弹层一致；不要改回「对齐侧栏左边缘」。
+
+面板打开期间按钮保持可见并显示激活态，再点一次就是收起。这里不用全屏遮罩：遮罩在 overlay 层（z-index 20），会盖住标题行里的按钮，点不到。改为在 `pointerdown` 捕获阶段判断点击目标——落在卡片或按钮之外就关闭并把这一下吃掉（`stopPropagation`），所以收起面板的那一下不会顺带点到下面的东西。
 
 ## 顺序写入
 
@@ -96,6 +98,19 @@ React 随时可能重建行：`MutationObserver` 加 prefs/list 订阅驱动幂�
 `npm stage publish` 只把包送进 stage 队列，维护者用 2FA 批准后才对外可见——这是 npm 现在的默认设计，不是配置没生效。批准入口在 npmjs.com 的包页面，或本地 `npm stage approve`。
 
 npm 现在把直接 `npm publish` 标为不推荐：Trusted Publisher 配置提供了 **stage-only** 选项，勾上后该 workflow 的 `npm publish` 会被拒绝，只接受 `npm stage publish`。本地手动发版也走同一套——`npm stage publish` 再批准，不要再用裸 `npm publish`。
+
+## 宿主侧动作
+
+`lib/actions.js` 只有一件事：在系统文件管理器里打开工作区目录。走官方 `sessionController.openWorkspacePath({ path }, signal)`——参数里不传 `action` 时按默认程序打开，对目录就是文件管理器。
+
+两条约束：
+
+- **路径只能来自注册表**：`POST /capabilities` 之外新增 `POST /open`，客户端只传 `workspaceId`，宿主用 `workspaceRegistry.get(id).path` 取路径。让客户端直接传路径等于把它变成任意路径打开器。
+- **signal 不能省**：真实实现第一行就是 `signal.throwIfAborted()`，少传第二个参数会抛 "Cannot read properties of undefined"。用一个新建的 `AbortController` 的 signal 即可。
+
+宿主没有桌面环境时 `canOpenWorkspacePath()` 返回 false，`GET /capabilities` 如实带回，面板据此不渲染那个按钮——不要做成「按钮在、点了报错」。
+
+工作区重命名**没有**放进本插件：DSH 已经把 `workspace.rename` / `workspace.delete` 注册到侧栏行的右键菜单里（带同名检查与错误展示），再实现一份只会和官方行为分叉。
 
 ## 上架插件市场
 
