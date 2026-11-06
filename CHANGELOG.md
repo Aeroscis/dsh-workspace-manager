@@ -4,7 +4,7 @@
 
 发布渠道：npm [`@aeroscis/dsh-workspace-manager`](https://www.npmjs.com/package/@aeroscis/dsh-workspace-manager) · 源码 <https://github.com/Aeroscis/dsh-workspace-manager>
 
-## [0.5.1] - 2026-11-06
+## [0.5.1] - 2026-11-07
 
 ### 新增
 
