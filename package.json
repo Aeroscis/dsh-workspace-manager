@@ -46,7 +46,27 @@
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
-    "dsh": "^0.2.1-rc.3"
+    "dsh": "^0.2.1-0 || ^0.2.2-0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "^0.2.1-0 || ^0.2.2-0",
+    "@deepseek-ai/dsh-api-workspace-controller": "^0.2.1-0 || ^0.2.2-0",
+    "@deepseek-ai/dsh-client-ui-session": "^0.2.1-0 || ^0.2.2-0",
+    "@deepseek-ai/dsh-client-ui-workspace": "^0.2.1-0 || ^0.2.2-0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-api-workspace-controller": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-session": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-workspace": {
+      "optional": true
+    }
   },
   "scripts": {
     "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs && node test/relocate.test.mjs && node test/open.test.mjs && node test/panel-width.test.mjs",

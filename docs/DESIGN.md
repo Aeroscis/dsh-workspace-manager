@@ -151,4 +151,8 @@ icon: https://raw.githubusercontent.com/Aeroscis/dsh-workspace-manager/main/asse
 - 仓库前置条件：`package.json` 声明 `dsh.bundle`（本仓库已有）；仓库创建满 1 天；仓库带 `dsh-plugin` topic。
 - 描述会被审核者拿去和代码核对，夸大会被打回；分类选不准则不会，维护者会直接改。
 
+详情页截图声明在本仓库的 `screenshots.json` 里（相对路径，1–8 张，不能以 `/` 开头、不能含 `..`），图片就放 `assets/screenshots/`。不声明也能收录，市场会从 README 里抽图；声明只是为了控制展示哪几张、什么顺序，换图时推自己的仓库即可。`screenshots.json` 与截图目录都不进 npm 包——市场是从 GitHub 仓库读的，打进包里只会让 tarball 白白变大。
+
+`peerDependencies` 与 `engines.dsh` 的对应关系容易被写错：宿主清单里只要出现 `engines.dsh`，就只按它判断兼容性、完全忽略 peer 范围；两个都写时必须是同一个范围。范围要带显式的预发布分支（`^0.2.1-0 || ^0.2.2-0`），因为 node-semver 只让预发布版本被「同一 `major.minor.patch` 元组上带预发布标签」的比较符放行——`^0.2.1-rc.3` 看起来覆盖 0.2.x，实际把 `0.2.2-rc.1` 排除在外。peer 全部标 `optional`：这些包由宿主提供，不标的话装进 profile 会多出一份运行时。
+
 条目通过只代表形状合格，合并前维护者会读代码。合并后通常在一天内出现在市场与站点上。

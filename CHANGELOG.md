@@ -4,6 +4,16 @@
 
 发布渠道：npm [`@aeroscis/dsh-workspace-manager`](https://www.npmjs.com/package/@aeroscis/dsh-workspace-manager) · 源码 <https://github.com/Aeroscis/dsh-workspace-manager>
 
+## [未发布]
+
+版本号仍是 0.5.1，尚未发布；这些改动先进仓库，等下次发版一起放出去。
+
+### 变更
+
+- **`@deepseek-ai/*` 改为 `peerDependencies`**：`@deepseek-ai/dsh` 与客户端注入的三个包（`dsh-api-workspace-controller`、`dsh-client-ui-session`、`dsh-client-ui-workspace`）声明为 peer，范围 `^0.2.1-0 || ^0.2.2-0`，并全部标成 `optional`——这些包由宿主提供，标成可选才不会被装成 profile 里的第二份运行时，缺了也不会报 `ERESOLVE`。旧范围 `^0.2.1-rc.3` 漏掉所有 0.2.2 预发布：`0.2.2-rc.1` 不满足它，宿主据此判断兼容性时会直接判为不兼容。
+- **`engines.dsh` 对齐同一范围**：`^0.2.1-rc.3` → `^0.2.1-0 || ^0.2.2-0`。宿主清单里只要声明了 `engines.dsh`，就只按它判断兼容性、忽略 peer 范围，两处必须写同一个范围。
+- **新增 `screenshots.json` 与 `assets/screenshots/panel.png`**：插件市场详情页的截图。声明放在本仓库，换图推自己的仓库即可、不用再提 PR；这两个文件不进 npm 包（市场从 GitHub 读取）。
+
 ## [0.5.1] - 2026-11-07
 
 ### 新增
