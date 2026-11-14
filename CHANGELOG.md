@@ -4,6 +4,20 @@
 
 发布渠道：npm [`@aeroscis/dsh-workspace-manager`](https://www.npmjs.com/package/@aeroscis/dsh-workspace-manager) · 源码 <https://github.com/Aeroscis/dsh-workspace-manager>
 
+## [0.5.3] - 2026-11-14
+
+### 变更
+
+- **验证并声明对 DSH 0.2.2-rc.3 的支持**：用宿主自己的 `evaluatePluginCompatibility`
+  逐个实测——0.2.2-rc.3 返回兼容，0.3.0-rc.1 被拒。插件代码一行未改。
+  另外确认了宿主侧代码能在 rc.3 运行时里正常 import、`apply` 齐全，客户端 bundle 的注册 id
+  仍等于包名。版本范围本身没变（`^0.2.1-0 || ^0.2.2-0` 早就覆盖到 0.2.x 全线），
+  这次发版是因为下面那条发布自检的改动。
+- **`scripts/check-release.mjs` 的宿主范围断言改为验语义**：原来查
+  `engines.dsh.startsWith('^0.2.1')`，换个等价写法就会误报，也拦不住「范围里混进大版本」。
+  现在用宿主同款的 `includePrerelease` 实测：0.2.x 的预发布版与 0.2.3 都必须落在范围内，
+  0.3.0-rc.1 必须被拒。
+
 ## [0.5.2] - 2026-11-09
 
 ### 变更

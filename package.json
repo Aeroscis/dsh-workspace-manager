@@ -1,6 +1,6 @@
 {
   "name": "@aeroscis/dsh-workspace-manager",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Workspace order, cleanup and path relocation for DeepSeek Harness: auto-rise the active workspace, pin, one-click sort, remove empty workspaces, relocate a workspace's folder with its conversations carried over. 工作区管理：活动项目自动上浮、置顶、一键整理、清理空工作区、工作区路径迁移（可连文件夹与对话一起搬）。",
   "type": "module",
   "main": "index.js",

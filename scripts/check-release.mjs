@@ -10,6 +10,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -90,8 +91,29 @@ for (const [label, value] of [
 check('engines declare the verified host', () => {
   const node = required(pkg.engines?.node, 'engines.node')
   const dsh = required(pkg.engines?.dsh, 'engines.dsh')
-  if (!dsh.startsWith('^0.2.1')) fail(`README documents DSH 0.2.1-rc.3, engines.dsh is ${dsh}`)
-  return `node ${node} · dsh ${dsh}`
+
+  // 断言的是语义而不是写法：前缀匹配（startsWith('^0.2.1')）会因为改成分段范围
+  // （`^0.2.1-0 || ^0.2.2-0`）之外的任何等价写法而误报，也拦不住「范围里混进了大版本」。
+  // 这里直接验两件事：受支持的 0.2.x 预发布版落在范围内，下一个大版本被拒。
+  let semver
+  try {
+    // 本仓库没有依赖，semver 从宿主或 profile 借；借不到就跳过语法检查（不假装通过）。
+    semver = createRequire(path.join(process.env.DSH_PROFILE_DIR ?? '', 'package.json'))('semver')
+  } catch {
+    semver = undefined
+  }
+  if (semver === undefined) return `node ${node} · dsh ${dsh}（无 semver，未校验范围语义）`
+
+  const includePrerelease = { includePrerelease: true }
+  for (const supported of ['0.2.1-rc.2', '0.2.2-rc.3', '0.2.3']) {
+    if (!semver.satisfies(supported, dsh, includePrerelease)) {
+      fail(`engines.dsh ${dsh} 不覆盖 ${supported}，宿主会拒绝装载本插件`)
+    }
+  }
+  if (semver.satisfies('0.3.0-rc.1', dsh, includePrerelease)) {
+    fail(`engines.dsh ${dsh} 覆盖了 0.3.0-rc.1；跨大版本必须先人工验证再放行`)
+  }
+  return `node ${node} · dsh ${dsh}（覆盖 0.2.x，拒绝 0.3）`
 })
 
 check('LICENSE matches the declared licence', () => {
