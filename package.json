@@ -69,8 +69,10 @@
     }
   },
   "scripts": {
-    "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs && node test/relocate.test.mjs && node test/open.test.mjs && node test/panel-width.test.mjs",
-    "check": "node scripts/check-release.mjs && npm test && npm pack --dry-run"
+    "test": "node test/activity.test.mjs && node test/sort-rule.test.mjs && node test/drag-geometry.test.mjs && node test/relocate.test.mjs && node test/open.test.mjs && node test/panel-width.test.mjs && node test/compat-rules.test.mjs",
+    "check": "node scripts/check-release.mjs && npm test && npm pack --dry-run",
+    "compat": "node scripts/compat-probe.mjs",
+    "compat:baseline": "node scripts/compat-probe.mjs --write-baseline"
   },
   "dsh": {
     "bundle": {

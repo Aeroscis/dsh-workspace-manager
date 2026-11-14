@@ -1,0 +1,139 @@
+{
+  "$comment": "本插件依赖的宿主接口。scripts/compat-probe.mjs 读这份清单，去宿主产物里逐项确认还在不在；宿主升级后只说变了什么，不重新推导一遍依赖。新增对宿主接口的调用时，把服务名和方法加进来。",
+  "host": {
+    "services": [
+      {
+        "name": "webServer",
+        "members": [
+          "register"
+        ],
+        "why": "lib/routes.js 通过它注册 /dsh-workspace-manager/api/* 四个端点"
+      },
+      {
+        "name": "workspaceRegistry",
+        "members": [
+          "get",
+          "list",
+          "create",
+          "delete",
+          "resolveByPath",
+          "insertBefore",
+          "archiveSession"
+        ],
+        "why": "lib/relocate.js 的路径迁移：读记录、查占用、建新记录、删旧记录、按位置插回、归档旧会话"
+      },
+      {
+        "name": "sessionController",
+        "members": [
+          "create",
+          "cancel",
+          "canOpenWorkspacePath",
+          "openWorkspacePath"
+        ],
+        "why": "lib/relocate.js 打开会话所在目录；lib/actions.js 在文件管理器里打开工作区"
+      },
+      {
+        "name": "sessions",
+        "members": [
+          "get"
+        ],
+        "why": "lib/relocate.js 迁移前确认会话还在宿主内存里"
+      },
+      {
+        "name": "agents",
+        "members": [
+          "create"
+        ],
+        "why": "lib/relocate.js 用 fork 种子在新的 cwd 下重建会话"
+      },
+      {
+        "name": "sessionQuery",
+        "members": [
+          "observeSession"
+        ],
+        "why": "lib/relocate.js 读旧会话事件以构造种子"
+      },
+      {
+        "name": "agentPresets",
+        "members": [
+          "resolve",
+          "mount"
+        ],
+        "why": "lib/relocate.js 在新会话上挂回 Agent 预设"
+      },
+      {
+        "name": "agentDefaultModel",
+        "members": [
+          "currentSelection"
+        ],
+        "why": "lib/relocate.js 新建会话时沿用当前选中的模型"
+      }
+    ],
+    "packages": [
+      "dsh-session",
+      "dsh-workspace",
+      "dsh-api-workspace-controller"
+    ],
+    "providerPackages": [
+      "dsh-host-webserver",
+      "dsh-workspace",
+      "dsh-api-session-controller",
+      "dsh-session",
+      "dsh-agent",
+      "dsh-session-query",
+      "dsh-agent-preset-registry",
+      "dsh-agent-default-model"
+    ]
+  },
+  "client": {
+    "services": [
+      {
+        "name": "workspaces",
+        "members": [
+          "list",
+          "insertBefore",
+          "delete"
+        ],
+        "why": "client.js 的自动上浮、一键整理、置顶与删除都走它；顺序写入宿主"
+      },
+      {
+        "name": "sessions",
+        "members": [
+          "list"
+        ],
+        "why": "client.js 判断活动与运行状态，自动上浮的输入"
+      },
+      {
+        "name": "slots",
+        "members": [
+          "inject",
+          "register"
+        ],
+        "why": "client.js 注册 shell.overlay 面板"
+      },
+      {
+        "name": "locale",
+        "members": [
+          "register",
+          "bind",
+          "subscribe"
+        ],
+        "why": "client.js 注册中英文字典"
+      }
+    ],
+    "slots": [
+      "shell.overlay"
+    ],
+    "packages": [
+      "dsh-api-workspace-controller",
+      "dsh-client-ui-session",
+      "dsh-client-ui-workspace"
+    ],
+    "providerPackages": [
+      "dsh-api-workspace-controller",
+      "dsh-session",
+      "dsh-client-ui-renderer",
+      "dsh-client-locale"
+    ]
+  }
+}

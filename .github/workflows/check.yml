@@ -23,3 +23,14 @@ jobs:
 
       - name: 发布形态自检与打包
         run: node scripts/check-release.mjs && npm pack --dry-run
+
+      # 宿主接口检查要读本机装的 DSH 才能判定，CI 上没有宿主，此时脚本必须以
+      # 「无法判定」(30) 退出，而不是当成通过。这条就是验证这件事。
+      # 真实判定在开发机上由 npm run compat 完成。
+      - name: 没有宿主时宿主接口检查不得报通过
+        run: |
+          set +e
+          DSH_APP_ROOT=/nonexistent DSH_APP_ASAR=/nonexistent node scripts/compat-probe.mjs
+          status=$?
+          set -e
+          test "$status" -eq 30
