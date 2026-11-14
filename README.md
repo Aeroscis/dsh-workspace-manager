@@ -72,6 +72,14 @@ npm run check   # 发布形态自检 + 测试 + 打包预览
 
 见 [CHANGELOG.md](CHANGELOG.md)。
 
+## 分支与发版
+
+日常开发在 `develop` 分支进行，不直接向 `main` 提交。
+
+- `develop`：开发分支。所有改动先提交到这里。
+- `main`：发版分支。只接受从 `develop` 合并过来的提交，tag 只在 `main` 上打。
+- 发版步骤：把 `develop` 合并到 `main`，在 `main` 上打 tag，然后推送 `main` 与 tag。
+
 ## 许可
 
 [MIT](LICENSE)
